@@ -16,22 +16,22 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // 디렉토리 생성
-const dirs = ['screenshots', 'output'];
-dirs.forEach(d => {
-  const dir = path.join(__dirname, d);
+const DIRS = {
+  screenshots: path.join(__dirname, 'screenshots'),
+  output: path.join(__dirname, 'output'),
+  uploads: path.join(__dirname, 'uploads'),
+  history: path.join(__dirname, 'history')
+};
+Object.values(DIRS).forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
-// multer 설정 (이미지 업로드용)
-const upload = multer({
-  dest: path.join(__dirname, 'uploads'),
-  limits: { fileSize: 10 * 1024 * 1024 }
-});
+// 정적 파일 서빙
+app.use('/output', express.static(DIRS.output));
+app.use('/screenshots', express.static(DIRS.screenshots));
+app.use('/uploads', express.static(DIRS.uploads));
 
-// 출력 파일 서빙
-app.use('/output', express.static(path.join(__dirname, 'output')));
-app.use('/screenshots', express.static(path.join(__dirname, 'screenshots')));
-
+// 브라우저 관리
 let browser = null;
 
 async function getBrowser() {
@@ -41,6 +41,24 @@ async function getBrowser() {
   return browser;
 }
 
+// Gemini API 호출 (자동 재시도)
+async function callGemini(prompt, imageParts = [], maxRetries = 2) {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  let lastError;
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      const parts = imageParts.length > 0 ? [prompt, ...imageParts] : [prompt];
+      const result = await model.generateContent(parts);
+      return result.response.text();
+    } catch (err) {
+      lastError = err;
+      console.error(`Gemini API 오류 (시도 ${i + 1}/${maxRetries + 1}):`, err.message);
+      if (i < maxRetries) await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+    }
+  }
+  throw lastError;
+}
+
 // ============================================================
 // 1) URL에서 상세페이지 크롤링 + 스크린샷
 // ============================================================
@@ -48,19 +66,43 @@ app.post('/api/crawl', async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'URL이 필요합니다' });
 
+  // URL 유효성 검사
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return res.status(400).json({ error: '올바른 URL 형식이 아닙니다' });
+    }
+    // 내부 네트워크 접근 차단
+    const hostname = parsed.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.')) {
+      return res.status(400).json({ error: '내부 네트워크 URL은 접근할 수 없습니다' });
+    }
+  } catch {
+    return res.status(400).json({ error: '올바른 URL 형식이 아닙니다' });
+  }
+
+  let context = null;
   try {
     const b = await getBrowser();
-    const context = await b.newContext({
+    context = await b.newContext({
       viewport: { width: 1400, height: 900 },
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     });
     const page = await context.newPage();
+
+    // 팝업/다이얼로그 자동 닫기
+    page.on('dialog', async dialog => {
+      await dialog.dismiss().catch(() => {});
+    });
 
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
     await page.waitForTimeout(2000);
 
     // 플랫폼 감지
     const platform = detectPlatform(url);
+
+    // 쿠키/팝업 자동 닫기
+    await dismissPopups(page);
 
     // 자동 스크롤 (lazy load 이미지 로딩)
     await autoScroll(page);
@@ -81,11 +123,13 @@ app.post('/api/crawl', async (req, res) => {
         '[class*="product-name"]', '[class*="productName"]', '[class*="item-name"]'
       ];
       for (const sel of titleSelectors) {
-        const el = document.querySelector(sel);
-        if (el && el.textContent.trim()) {
-          data.productName = el.textContent.trim();
-          break;
-        }
+        try {
+          const el = document.querySelector(sel);
+          if (el && el.textContent.trim()) {
+            data.productName = el.textContent.trim().substring(0, 200);
+            break;
+          }
+        } catch {}
       }
 
       // 가격 추출
@@ -94,11 +138,13 @@ app.post('/api/crawl', async (req, res) => {
         '[class*="price"]', '[class*="sale"]', '.prod-sale-price'
       ];
       for (const sel of priceSelectors) {
-        const el = document.querySelector(sel);
-        if (el && el.textContent.trim()) {
-          data.price = el.textContent.trim();
-          break;
-        }
+        try {
+          const el = document.querySelector(sel);
+          if (el && el.textContent.trim()) {
+            data.price = el.textContent.trim().substring(0, 50);
+            break;
+          }
+        } catch {}
       }
 
       // 본문 텍스트
@@ -123,49 +169,50 @@ app.post('/api/crawl', async (req, res) => {
       return data;
     }, platform);
 
-    // 전체 페이지 스크린샷 (분할)
+    // 전체 페이지 스크린샷 (분할) - 갭 없이
     const sessionId = Date.now().toString();
-    const screenshotDir = path.join(__dirname, 'screenshots', sessionId);
+    const screenshotDir = path.join(DIRS.screenshots, sessionId);
     fs.mkdirSync(screenshotDir, { recursive: true });
 
-    // 전체 페이지 높이 측정
-    const totalHeight = await page.evaluate(() => document.body.scrollHeight);
-    const viewportHeight = 900;
-    const chunkHeight = 1200; // 각 캡처 높이
-    const screenshotPaths = [];
-
-    const numChunks = Math.min(Math.ceil(totalHeight / chunkHeight), 15); // 최대 15장
-
-    for (let i = 0; i < numChunks; i++) {
-      await page.evaluate((y) => window.scrollTo(0, y), i * chunkHeight);
-      await page.waitForTimeout(500);
-      const filePath = path.join(screenshotDir, `screenshot_${i}.jpg`);
-      await page.screenshot({
-        path: filePath,
-        type: 'jpeg',
-        quality: 80,
-        clip: { x: 0, y: 0, width: 1400, height: Math.min(chunkHeight, viewportHeight) }
-      });
-      screenshotPaths.push(filePath);
-    }
-
-    // 전체 풀페이지 스크린샷도 하나 찍기
+    // 풀페이지 스크린샷
     const fullPath = path.join(screenshotDir, 'full_page.jpg');
     await page.screenshot({ path: fullPath, fullPage: true, type: 'jpeg', quality: 70 });
 
+    // 풀페이지 이미지를 sharp로 분할 (갭 없음 보장)
+    const fullBuffer = fs.readFileSync(fullPath);
+    const metadata = await sharp(fullBuffer).metadata();
+    const totalHeight = metadata.height;
+    const chunkHeight = 1200;
+    const numChunks = Math.min(Math.ceil(totalHeight / chunkHeight), 15);
+
+    for (let i = 0; i < numChunks; i++) {
+      const top = i * chunkHeight;
+      const height = Math.min(chunkHeight, totalHeight - top);
+      if (height <= 0) break;
+
+      const chunkPath = path.join(screenshotDir, `screenshot_${i}.jpg`);
+      await sharp(fullBuffer)
+        .extract({ left: 0, top, width: metadata.width, height })
+        .jpeg({ quality: 80 })
+        .toFile(chunkPath);
+    }
+
     await context.close();
+    context = null;
 
     res.json({
       success: true,
       sessionId,
       platform,
       pageData,
-      screenshotCount: screenshotPaths.length,
+      screenshotCount: numChunks,
       totalHeight
     });
   } catch (err) {
     console.error('크롤링 오류:', err);
     res.status(500).json({ error: err.message });
+  } finally {
+    if (context) await context.close().catch(() => {});
   }
 });
 
@@ -177,18 +224,21 @@ app.post('/api/analyze', async (req, res) => {
   if (!sessionId) return res.status(400).json({ error: 'sessionId 필요' });
 
   try {
-    const screenshotDir = path.join(__dirname, 'screenshots', sessionId);
+    const screenshotDir = path.join(DIRS.screenshots, sessionId);
+    if (!fs.existsSync(screenshotDir)) {
+      return res.status(400).json({ error: '스크린샷을 찾을 수 없습니다. 다시 크롤링해주세요.' });
+    }
+
     const files = fs.readdirSync(screenshotDir)
       .filter(f => f.startsWith('screenshot_'))
       .sort()
-      .slice(0, 10); // Gemini에 최대 10장
+      .slice(0, 10);
 
     // 이미지를 base64로 변환
     const imageParts = [];
     for (const file of files) {
       const filePath = path.join(screenshotDir, file);
       const buffer = fs.readFileSync(filePath);
-      // 리사이즈 (Gemini 전송 최적화)
       const resized = await sharp(buffer)
         .resize(1000, null, { withoutEnlargement: true })
         .jpeg({ quality: 75 })
@@ -200,8 +250,6 @@ app.post('/api/analyze', async (req, res) => {
         }
       });
     }
-
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const prompt = `당신은 쇼핑몰 상세페이지 분석 전문가입니다.
 아래 스크린샷은 하나의 상품 상세페이지를 위에서부터 순서대로 캡처한 것입니다.
@@ -250,8 +298,7 @@ ${pageData ? `\n추출된 텍스트 정보:\n- 제품명: ${pageData.productName
   }
 }`;
 
-    const result = await model.generateContent([prompt, ...imageParts]);
-    const text = result.response.text();
+    const text = await callGemini(prompt, imageParts);
 
     // JSON 추출
     let analysis;
@@ -261,6 +308,17 @@ ${pageData ? `\n추출된 텍스트 정보:\n- 제품명: ${pageData.productName
     } else {
       analysis = { raw: text };
     }
+
+    // 분석 히스토리 저장
+    const historyFile = path.join(DIRS.history, `${sessionId}.json`);
+    fs.writeFileSync(historyFile, JSON.stringify({
+      sessionId,
+      url: pageData?.url || '',
+      platform: pageData?.platform || '',
+      productName: analysis.product?.name || pageData?.productName || '',
+      analysis,
+      createdAt: new Date().toISOString()
+    }, null, 2));
 
     res.json({ success: true, analysis });
   } catch (err) {
@@ -277,8 +335,6 @@ app.post('/api/generate', async (req, res) => {
   if (!analysis) return res.status(400).json({ error: '분석 데이터 필요' });
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
     const editInstructions = userEdits ? `\n\n사용자 수정 요청:\n${userEdits}` : '';
 
     const prompt = `당신은 쇼핑몰 상세페이지 전문 디자이너입니다.
@@ -295,7 +351,7 @@ ${editInstructions}
 4. 분석된 디자인 톤과 컬러를 반영
 5. 분석된 카피라이팅 스타일을 반영하여 텍스트 작성
 6. 셀링 포인트를 효과적으로 강조
-7. 이미지 영역은 플레이스홀더로 표시 (회색 박스 + "이미지 영역" 텍스트)
+7. 이미지 영역은 플레이스홀더로 표시 (회색 박스 + "이미지 영역" 텍스트, 각 플레이스홀더에 data-placeholder-id="1", "2"... 속성 추가)
 8. 모든 텍스트는 한국어
 9. inline CSS만 사용 (외부 CSS 없음)
 10. 배경색, 구분선, 아이콘(이모지 활용) 등으로 시각적으로 풍성하게
@@ -303,8 +359,7 @@ ${editInstructions}
 반드시 완전한 HTML 코드만 출력하세요. \`\`\`html 태그로 감싸세요.
 <html>부터 </html>까지 포함.`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const text = await callGemini(prompt);
 
     // HTML 추출
     let html = '';
@@ -314,12 +369,12 @@ ${editInstructions}
     } else if (text.includes('<html') || text.includes('<!DOCTYPE')) {
       html = text;
     } else {
-      html = `<html><body><p>HTML 생성 실패. 다시 시도해주세요.</p></body></html>`;
+      return res.status(500).json({ error: 'HTML 생성에 실패했습니다. 다시 시도해주세요.' });
     }
 
     // HTML 파일 저장
     const outputId = Date.now().toString();
-    const htmlPath = path.join(__dirname, 'output', `page_${outputId}.html`);
+    const htmlPath = path.join(DIRS.output, `page_${outputId}.html`);
     fs.writeFileSync(htmlPath, html);
 
     res.json({
@@ -341,32 +396,27 @@ app.post('/api/export-jpg', async (req, res) => {
   const { html, outputId } = req.body;
   if (!html) return res.status(400).json({ error: 'HTML 필요' });
 
+  let context = null;
   try {
     const b = await getBrowser();
-    const context = await b.newContext({
+    context = await b.newContext({
       viewport: { width: 860, height: 900 }
     });
     const page = await context.newPage();
 
-    // HTML을 직접 로드
     await page.setContent(html, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
 
-    // 전체 높이 측정
     const totalHeight = await page.evaluate(() => document.body.scrollHeight);
-    const width = 860;
 
-    // 풀페이지 스크린샷 (PNG)
-    const pngBuffer = await page.screenshot({
-      fullPage: true,
-      type: 'png'
-    });
+    // 풀페이지 스크린샷 (PNG) → JPG 변환
+    const pngBuffer = await page.screenshot({ fullPage: true, type: 'png' });
 
     await context.close();
+    context = null;
 
-    // PNG → JPG 변환 (sharp)
     const jpgFileName = `detail_${outputId || Date.now()}.jpg`;
-    const jpgPath = path.join(__dirname, 'output', jpgFileName);
+    const jpgPath = path.join(DIRS.output, jpgFileName);
 
     await sharp(pngBuffer)
       .jpeg({ quality: 90, mozjpeg: true })
@@ -379,28 +429,34 @@ app.post('/api/export-jpg', async (req, res) => {
       fileName: jpgFileName,
       filePath: `/output/${jpgFileName}`,
       fileSize: (stats.size / 1024 / 1024).toFixed(2) + 'MB',
-      dimensions: `${width} x ${totalHeight}px`
+      dimensions: `860 x ${totalHeight}px`
     });
   } catch (err) {
     console.error('JPG 변환 오류:', err);
     res.status(500).json({ error: err.message });
+  } finally {
+    if (context) await context.close().catch(() => {});
   }
 });
 
 // ============================================================
-// 5) 사용자 이미지 업로드 (플레이스홀더 교체용)
+// 5) 이미지 업로드 (플레이스홀더 교체용)
 // ============================================================
-const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-app.use('/uploads', express.static(uploadDir));
-
 const uploadStorage = multer.diskStorage({
-  destination: uploadDir,
+  destination: DIRS.uploads,
   filename: (req, file, cb) => {
-    cb(null, Date.now() + '_' + file.originalname);
+    const ext = path.extname(file.originalname) || '.jpg';
+    cb(null, Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ext);
   }
 });
-const uploadHandler = multer({ storage: uploadStorage });
+const uploadHandler = multer({
+  storage: uploadStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('이미지 파일만 업로드 가능합니다'));
+  }
+});
 
 app.post('/api/upload-image', uploadHandler.single('image'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: '이미지 필요' });
@@ -412,19 +468,123 @@ app.post('/api/upload-image', uploadHandler.single('image'), (req, res) => {
 });
 
 // ============================================================
+// 6) 분석 히스토리
+// ============================================================
+app.get('/api/history', (req, res) => {
+  try {
+    const files = fs.readdirSync(DIRS.history)
+      .filter(f => f.endsWith('.json'))
+      .sort((a, b) => b.localeCompare(a))
+      .slice(0, 20);
+
+    const history = files.map(f => {
+      const data = JSON.parse(fs.readFileSync(path.join(DIRS.history, f), 'utf-8'));
+      return {
+        sessionId: data.sessionId,
+        productName: data.productName,
+        platform: data.platform,
+        createdAt: data.createdAt
+      };
+    });
+
+    res.json({ success: true, history });
+  } catch (err) {
+    res.json({ success: true, history: [] });
+  }
+});
+
+app.get('/api/history/:sessionId', (req, res) => {
+  try {
+    const filePath = path.join(DIRS.history, `${req.params.sessionId}.json`);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: '히스토리 없음' });
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// 7) 분석 결과 JSON 내보내기
+// ============================================================
+app.post('/api/export-analysis', (req, res) => {
+  const { analysis, sessionId } = req.body;
+  if (!analysis) return res.status(400).json({ error: '분석 데이터 필요' });
+
+  const fileName = `analysis_${sessionId || Date.now()}.json`;
+  const filePath = path.join(DIRS.output, fileName);
+  fs.writeFileSync(filePath, JSON.stringify(analysis, null, 2));
+
+  res.json({ success: true, filePath: `/output/${fileName}`, fileName });
+});
+
+// ============================================================
+// 8) 오래된 세션 자동 정리 (24시간 이상)
+// ============================================================
+function cleanupOldSessions() {
+  const maxAge = 24 * 60 * 60 * 1000; // 24시간
+  const now = Date.now();
+
+  [DIRS.screenshots].forEach(dir => {
+    try {
+      fs.readdirSync(dir).forEach(name => {
+        const fullPath = path.join(dir, name);
+        const stat = fs.statSync(fullPath);
+        if (stat.isDirectory() && (now - stat.mtimeMs) > maxAge) {
+          fs.rmSync(fullPath, { recursive: true, force: true });
+          console.log(`정리됨: ${fullPath}`);
+        }
+      });
+    } catch {}
+  });
+}
+
+// 서버 시작 시 + 6시간마다 정리
+cleanupOldSessions();
+setInterval(cleanupOldSessions, 6 * 60 * 60 * 1000);
+
+// ============================================================
 // 유틸리티 함수
 // ============================================================
 function detectPlatform(url) {
-  if (url.includes('coupang.com')) return 'coupang';
-  if (url.includes('smartstore.naver.com') || url.includes('shopping.naver.com') || url.includes('brand.naver.com')) return 'naver';
-  if (url.includes('wadiz.kr')) return 'wadiz';
-  if (url.includes('11st.co.kr')) return '11st';
-  if (url.includes('gmarket.co.kr')) return 'gmarket';
-  if (url.includes('auction.co.kr')) return 'auction';
-  if (url.includes('tmon.co.kr')) return 'tmon';
-  if (url.includes('wemakeprice.com')) return 'wemakeprice';
-  if (url.includes('aliexpress.com')) return 'aliexpress';
+  const platforms = [
+    ['coupang.com', 'coupang'],
+    ['smartstore.naver.com', 'naver'], ['shopping.naver.com', 'naver'], ['brand.naver.com', 'naver'],
+    ['wadiz.kr', 'wadiz'],
+    ['11st.co.kr', '11st'],
+    ['gmarket.co.kr', 'gmarket'],
+    ['auction.co.kr', 'auction'],
+    ['tmon.co.kr', 'tmon'],
+    ['wemakeprice.com', 'wemakeprice'],
+    ['aliexpress.com', 'aliexpress'],
+    ['ohou.se', 'ohouse'], ['ohouse.com', 'ohouse'],
+    ['idus.com', 'idus'],
+    ['musinsa.com', 'musinsa'],
+  ];
+  for (const [domain, name] of platforms) {
+    if (url.includes(domain)) return name;
+  }
   return 'other';
+}
+
+async function dismissPopups(page) {
+  const popupSelectors = [
+    '[class*="popup"] [class*="close"]',
+    '[class*="modal"] [class*="close"]',
+    '[class*="cookie"] button',
+    '[class*="banner"] [class*="close"]',
+    '.layer-close', '.btn-close-layer',
+    '[aria-label="닫기"]', '[aria-label="Close"]',
+  ];
+  for (const sel of popupSelectors) {
+    try {
+      const el = await page.$(sel);
+      if (el && await el.isVisible()) {
+        await el.click();
+        await page.waitForTimeout(300);
+      }
+    } catch {}
+  }
 }
 
 async function autoScroll(page) {
@@ -450,7 +610,6 @@ app.listen(PORT, () => {
   console.log(`상세페이지 분석기 서버 실행중: http://localhost:${PORT}`);
 });
 
-// 종료 처리
 process.on('SIGINT', async () => {
   if (browser) await browser.close();
   process.exit();

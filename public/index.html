@@ -31,6 +31,7 @@
       border-radius: 10px;
       font-weight: 600;
     }
+    .header-right { margin-left: auto; display: flex; gap: 8px; }
 
     /* URL 입력 영역 */
     .url-section {
@@ -56,6 +57,8 @@
       outline: none;
     }
     .url-input-wrapper input::placeholder { color: #555; }
+
+    /* 버튼 공통 */
     .btn-analyze {
       background: linear-gradient(135deg, #3b82f6, #2563eb);
       color: #fff;
@@ -70,6 +73,48 @@
     }
     .btn-analyze:hover { background: linear-gradient(135deg, #2563eb, #1d4ed8); transform: translateY(-1px); }
     .btn-analyze:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-generate {
+      background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+      color: #fff;
+      border: none;
+      padding: 14px 32px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-generate:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(139,92,246,0.3); }
+    .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+    .btn-download {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #fff;
+      border: none;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 16px;
+      transition: all 0.2s;
+    }
+    .btn-download:hover { transform: translateY(-1px); }
+    .btn-secondary {
+      background: #252830;
+      border: 1px solid #2d3140;
+      color: #e1e4e8;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover { border-color: #3b82f6; }
+    .btn-sm {
+      padding: 6px 14px;
+      font-size: 12px;
+      border-radius: 6px;
+    }
 
     /* 진행 상태 */
     .progress-section {
@@ -112,7 +157,6 @@
       gap: 4px;
       margin-bottom: 20px;
       border-bottom: 1px solid #2d3140;
-      padding-bottom: 0;
     }
     .tab {
       padding: 10px 20px;
@@ -193,7 +237,7 @@
     }
     .info-row:last-child { border-bottom: none; }
     .info-label { color: #888; }
-    .info-value { color: #e1e4e8; font-weight: 500; }
+    .info-value { color: #e1e4e8; font-weight: 500; max-width: 60%; text-align: right; }
 
     .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .tag {
@@ -248,11 +292,7 @@
     }
 
     /* 생성 패널 */
-    .generate-section {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
+    .generate-section { display: flex; flex-direction: column; gap: 16px; }
     .edit-area {
       background: #1a1d27;
       border: 1px solid #2d3140;
@@ -274,26 +314,7 @@
     }
     .edit-area textarea:focus { border-color: #3b82f6; }
 
-    .btn-generate {
-      background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-      color: #fff;
-      border: none;
-      padding: 14px 32px;
-      border-radius: 10px;
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .btn-generate:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(139,92,246,0.3); }
-    .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
-
     /* 미리보기 패널 */
-    .preview-container {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-    }
     .preview-panel {
       background: #1a1d27;
       border: 1px solid #2d3140;
@@ -317,19 +338,11 @@
     }
     .preview-iframe-wrap iframe {
       width: 860px;
-      height: 600px;
-      border: none;
-      transform-origin: top center;
-    }
-    .preview-full {
-      grid-column: 1 / -1;
-    }
-    .preview-full .preview-iframe-wrap iframe {
-      width: 860px;
       height: 800px;
+      border: none;
     }
 
-    /* JPG 결과 영역 */
+    /* JPG 결과 */
     .jpg-result {
       background: #1a1d27;
       border: 1px solid #2d3140;
@@ -346,33 +359,78 @@
     }
     .jpg-info { margin-top: 12px; font-size: 13px; color: #888; }
 
-    .btn-download {
-      background: linear-gradient(135deg, #10b981, #059669);
-      color: #fff;
-      border: none;
-      padding: 12px 28px;
-      border-radius: 8px;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      margin-top: 16px;
-      transition: all 0.2s;
-    }
-    .btn-download:hover { transform: translateY(-1px); }
+    .actions { display: flex; gap: 10px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
 
-    .btn-secondary {
+    /* 히스토리 */
+    .history-dropdown {
+      position: relative;
+      display: inline-block;
+    }
+    .history-list {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      background: #1a1d27;
+      border: 1px solid #2d3140;
+      border-radius: 8px;
+      min-width: 320px;
+      max-height: 400px;
+      overflow-y: auto;
+      z-index: 50;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .history-list.show { display: block; }
+    .history-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid #1f2233;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .history-item:hover { background: #252830; }
+    .history-item:last-child { border-bottom: none; }
+    .history-item .name { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+    .history-item .meta { font-size: 11px; color: #666; }
+
+    /* 이미지 교체 */
+    .image-replace-area {
+      background: #1a1d27;
+      border: 1px solid #2d3140;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 16px;
+    }
+    .image-replace-area h4 { font-size: 14px; margin-bottom: 12px; }
+    .placeholder-list { display: flex; flex-direction: column; gap: 8px; }
+    .placeholder-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      background: #252830;
+      border-radius: 8px;
+    }
+    .placeholder-row span { font-size: 13px; flex: 1; }
+    .placeholder-row input[type="file"] { font-size: 12px; }
+
+    /* 토스트 */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
       background: #252830;
       border: 1px solid #2d3140;
-      color: #e1e4e8;
-      padding: 10px 20px;
       border-radius: 8px;
+      padding: 12px 20px;
       font-size: 14px;
-      cursor: pointer;
-      transition: all 0.2s;
+      z-index: 200;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.3s;
     }
-    .btn-secondary:hover { border-color: #3b82f6; }
-
-    .actions { display: flex; gap: 10px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { border-color: #10b981; color: #10b981; }
+    .toast.error { border-color: #ef4444; color: #ef4444; }
 
     /* 로딩 */
     .spinner {
@@ -402,11 +460,11 @@
     .platform-badge.naver { background: #1a4d2e; color: #4ade80; }
     .platform-badge.wadiz { background: #2d2766; color: #a78bfa; }
     .platform-badge.other { background: #333; color: #999; }
+    .platform-badge.musinsa { background: #1a1a2e; color: #818cf8; }
+    .platform-badge.ohouse { background: #2d3326; color: #84cc16; }
 
-    /* 반응형 */
     @media (max-width: 1000px) {
       .analysis-grid { grid-template-columns: 1fr; }
-      .preview-container { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -414,6 +472,12 @@
   <div class="header">
     <h1>상세페이지 분석기</h1>
     <span class="badge">Gemini Vision</span>
+    <div class="header-right">
+      <div class="history-dropdown">
+        <button class="btn-secondary btn-sm" onclick="toggleHistory()">분석 히스토리</button>
+        <div class="history-list" id="historyList"></div>
+      </div>
+    </div>
   </div>
 
   <!-- URL 입력 -->
@@ -434,10 +498,10 @@
 
   <!-- 메인 컨텐츠 -->
   <div class="main-content" id="mainContent">
-    <div class="tabs">
-      <button class="tab active" onclick="switchTab('analysis')">분석 결과</button>
-      <button class="tab" onclick="switchTab('generate')">상세페이지 생성</button>
-      <button class="tab" onclick="switchTab('preview')">미리보기 / 내보내기</button>
+    <div class="tabs" id="tabBar">
+      <button class="tab active" data-tab="analysis" onclick="switchTab('analysis')">분석 결과</button>
+      <button class="tab" data-tab="generate" onclick="switchTab('generate')">상세페이지 생성</button>
+      <button class="tab" data-tab="preview" onclick="switchTab('preview')">미리보기 / 내보내기</button>
     </div>
 
     <!-- 탭 1: 분석 결과 -->
@@ -465,23 +529,31 @@
 
     <!-- 탭 3: 미리보기 -->
     <div class="tab-panel" id="tab-preview">
-      <div class="preview-full">
-        <div class="preview-panel">
-          <div class="preview-panel-header">
-            <span>생성된 상세페이지 미리보기 (860px)</span>
-            <div style="display:flex; gap:8px;">
-              <button class="btn-secondary" onclick="regenerate()">다시 생성</button>
-              <button class="btn-secondary" onclick="editHtml()">HTML 편집</button>
-            </div>
+      <div class="preview-panel">
+        <div class="preview-panel-header">
+          <span>생성된 상세페이지 미리보기 (860px)</span>
+          <div style="display:flex; gap:8px;">
+            <button class="btn-secondary btn-sm" onclick="switchTab('generate')">다시 생성</button>
+            <button class="btn-secondary btn-sm" onclick="editHtml()">HTML 편집</button>
+            <button class="btn-secondary btn-sm" onclick="exportAnalysisJson()">분석 JSON 저장</button>
           </div>
-          <div class="preview-iframe-wrap">
-            <iframe id="previewFrame"></iframe>
-          </div>
+        </div>
+        <div class="preview-iframe-wrap">
+          <iframe id="previewFrame"></iframe>
+        </div>
+      </div>
+
+      <!-- 이미지 플레이스홀더 교체 -->
+      <div class="image-replace-area" id="imageReplaceArea" style="display:none;">
+        <h4>이미지 플레이스홀더 교체</h4>
+        <div class="placeholder-list" id="placeholderList"></div>
+        <div style="margin-top:12px; text-align:right;">
+          <button class="btn-secondary btn-sm" onclick="applyImageReplacements()">이미지 적용</button>
         </div>
       </div>
 
       <div class="actions" style="margin-top:24px;">
-        <button class="btn-generate" onclick="exportJpg()">JPG로 내보내기</button>
+        <button class="btn-generate" id="btnExportJpg" onclick="exportJpg(this)">JPG로 내보내기</button>
       </div>
 
       <div class="jpg-result" id="jpgResult" style="display:none; margin-top:24px;">
@@ -503,13 +575,16 @@
       <div style="padding:16px 20px; border-bottom:1px solid #2d3140; display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:600;">HTML 직접 편집</span>
         <div style="display:flex; gap:8px;">
-          <button class="btn-secondary" onclick="applyHtmlEdit()">적용</button>
-          <button class="btn-secondary" onclick="closeHtmlEditor()">닫기</button>
+          <button class="btn-secondary btn-sm" onclick="applyHtmlEdit()">적용</button>
+          <button class="btn-secondary btn-sm" onclick="closeHtmlEditor()">닫기</button>
         </div>
       </div>
       <textarea id="htmlEditor" style="flex:1; background:#252830; border:none; color:#e1e4e8; padding:20px; font-family:monospace; font-size:13px; resize:none; outline:none;"></textarea>
     </div>
   </div>
+
+  <!-- 토스트 -->
+  <div class="toast" id="toast"></div>
 
   <script>
     let currentSessionId = null;
@@ -522,7 +597,9 @@
     // ============================================================
     async function startAnalysis() {
       const url = document.getElementById('urlInput').value.trim();
-      if (!url) return alert('URL을 입력해주세요');
+      if (!url) return showToast('URL을 입력해주세요', 'error');
+
+      try { new URL(url); } catch { return showToast('올바른 URL 형식이 아닙니다', 'error'); }
 
       const btn = document.getElementById('btnAnalyze');
       btn.disabled = true;
@@ -550,7 +627,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             sessionId: crawlData.sessionId,
-            pageData: crawlData.pageData
+            pageData: { ...crawlData.pageData, url }
           })
         });
         const analyzeData = await analyzeRes.json();
@@ -559,15 +636,15 @@
         currentAnalysis = analyzeData.analysis;
         updateProgress(100, '분석 완료!');
 
-        // 결과 표시
         renderScreenshots(crawlData);
         renderAnalysis(analyzeData.analysis, crawlData);
         document.getElementById('mainContent').style.display = 'block';
         switchTab('analysis');
 
         setTimeout(() => showProgress(false), 1000);
+        showToast('분석 완료!', 'success');
       } catch (err) {
-        alert('분석 오류: ' + err.message);
+        showToast('분석 오류: ' + err.message, 'error');
         showProgress(false);
       } finally {
         btn.disabled = false;
@@ -576,20 +653,79 @@
     }
 
     // ============================================================
+    // 히스토리
+    // ============================================================
+    async function toggleHistory() {
+      const list = document.getElementById('historyList');
+      if (list.classList.contains('show')) {
+        list.classList.remove('show');
+        return;
+      }
+
+      const res = await fetch('/api/history');
+      const data = await res.json();
+
+      if (!data.history || data.history.length === 0) {
+        list.innerHTML = '<div style="padding:16px; color:#666; text-align:center;">히스토리가 없습니다</div>';
+      } else {
+        const platformNames = { coupang: '쿠팡', naver: '네이버', wadiz: '와디즈', other: '기타', musinsa: '무신사', ohouse: '오늘의집' };
+        list.innerHTML = data.history.map(h => `
+          <div class="history-item" onclick="loadHistory('${h.sessionId}')">
+            <div class="name">${h.productName || '(이름 없음)'}</div>
+            <div class="meta">${platformNames[h.platform] || h.platform || ''} | ${new Date(h.createdAt).toLocaleString('ko-KR')}</div>
+          </div>
+        `).join('');
+      }
+      list.classList.add('show');
+    }
+
+    async function loadHistory(sessionId) {
+      document.getElementById('historyList').classList.remove('show');
+      try {
+        const res = await fetch(`/api/history/${sessionId}`);
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+
+        currentSessionId = data.sessionId;
+        currentAnalysis = data.analysis;
+
+        // 스크린샷이 남아있으면 표시
+        const container = document.getElementById('screenshotPreview');
+        container.innerHTML = `<h3>원본 스크린샷 (히스토리)</h3><p style="color:#666;font-size:13px;">이전 분석 결과를 불러왔습니다</p>`;
+
+        renderAnalysis(data.analysis, { platform: data.platform });
+        document.getElementById('mainContent').style.display = 'block';
+        switchTab('analysis');
+        showToast('히스토리를 불러왔습니다', 'success');
+      } catch (err) {
+        showToast('히스토리 로드 실패: ' + err.message, 'error');
+      }
+    }
+
+    // 외부 클릭 시 히스토리 닫기
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.history-dropdown')) {
+        document.getElementById('historyList').classList.remove('show');
+      }
+    });
+
+    // ============================================================
     // 스크린샷 미리보기
     // ============================================================
     function renderScreenshots(crawlData) {
       const container = document.getElementById('screenshotPreview');
-      let html = '<h3>원본 스크린샷</h3>';
-
-      // 플랫폼 배지
+      const platformNames = {
+        coupang: '쿠팡', naver: '네이버', wadiz: '와디즈', other: '자사몰/기타',
+        musinsa: '무신사', ohouse: '오늘의집', '11st': '11번가',
+        gmarket: 'G마켓', auction: '옥션', idus: '아이디어스'
+      };
       const p = crawlData.platform;
-      const platformNames = { coupang: '쿠팡', naver: '네이버', wadiz: '와디즈', other: '자사몰/기타' };
+
+      let html = '<h3>원본 스크린샷</h3>';
       html += `<div class="platform-badge ${p}" style="margin-bottom:12px;">${platformNames[p] || p}</div>`;
 
-      // 스크린샷 이미지들
       for (let i = 0; i < crawlData.screenshotCount; i++) {
-        html += `<img src="/screenshots/${crawlData.sessionId}/screenshot_${i}.jpg" alt="screenshot ${i}">`;
+        html += `<img src="/screenshots/${crawlData.sessionId}/screenshot_${i}.jpg" alt="screenshot ${i}" loading="lazy">`;
       }
       container.innerHTML = html;
     }
@@ -606,11 +742,11 @@
         const p = analysis.product;
         html += `<div class="card">
           <h3><span class="icon" style="background:#1e3a5f;color:#3b82f6;">P</span> 제품 정보</h3>
-          <div class="info-row"><span class="info-label">제품명</span><span class="info-value">${p.name || '-'}</span></div>
-          <div class="info-row"><span class="info-label">가격</span><span class="info-value">${p.price || '-'}</span></div>
-          <div class="info-row"><span class="info-label">원가</span><span class="info-value">${p.originalPrice || '-'}</span></div>
-          <div class="info-row"><span class="info-label">카테고리</span><span class="info-value">${p.category || '-'}</span></div>
-          <div class="info-row"><span class="info-label">브랜드</span><span class="info-value">${p.brand || '-'}</span></div>
+          <div class="info-row"><span class="info-label">제품명</span><span class="info-value">${esc(p.name)}</span></div>
+          <div class="info-row"><span class="info-label">가격</span><span class="info-value">${esc(p.price)}</span></div>
+          <div class="info-row"><span class="info-label">원가</span><span class="info-value">${esc(p.originalPrice)}</span></div>
+          <div class="info-row"><span class="info-label">카테고리</span><span class="info-value">${esc(p.category)}</span></div>
+          <div class="info-row"><span class="info-label">브랜드</span><span class="info-value">${esc(p.brand)}</span></div>
         </div>`;
       }
 
@@ -619,13 +755,13 @@
         const d = analysis.design;
         html += `<div class="card">
           <h3><span class="icon" style="background:#2d1f4e;color:#8b5cf6;">D</span> 디자인 분석</h3>
-          <div class="info-row"><span class="info-label">톤</span><span class="info-value">${d.tone || '-'}</span></div>
-          <div class="info-row"><span class="info-label">폰트</span><span class="info-value">${d.fontStyle || '-'}</span></div>
-          <div class="info-row"><span class="info-label">이미지 스타일</span><span class="info-value">${d.imageStyle || '-'}</span></div>
+          <div class="info-row"><span class="info-label">톤</span><span class="info-value">${esc(d.tone)}</span></div>
+          <div class="info-row"><span class="info-label">폰트</span><span class="info-value">${esc(d.fontStyle)}</span></div>
+          <div class="info-row"><span class="info-label">이미지 스타일</span><span class="info-value">${esc(d.imageStyle)}</span></div>
           <div style="margin-top:10px;">
             <span class="info-label" style="font-size:13px;">메인 컬러</span>
             <div class="color-swatches">
-              ${(d.mainColors || []).map(c => `<div class="swatch" style="background:${c}"><span>${c}</span></div>`).join('')}
+              ${(d.mainColors || []).map(c => `<div class="swatch" style="background:${esc(c)}"><span>${esc(c)}</span></div>`).join('')}
             </div>
           </div>
         </div>`;
@@ -638,8 +774,8 @@
           <ul class="structure-list">
             ${analysis.structure.map((s, i) => `
               <li class="structure-item">
-                <div class="name">${i + 1}. ${s.section}</div>
-                <div class="desc">${s.description || ''} ${s.layout ? '| ' + s.layout : ''}</div>
+                <div class="name">${i + 1}. ${esc(s.section)}</div>
+                <div class="desc">${esc(s.description || '')} ${s.layout ? '| ' + esc(s.layout) : ''}</div>
               </li>
             `).join('')}
           </ul>
@@ -651,15 +787,15 @@
         const c = analysis.copywriting;
         html += `<div class="card">
           <h3><span class="icon" style="background:#3d2e1a;color:#f59e0b;">C</span> 카피라이팅 분석</h3>
-          <div class="info-row"><span class="info-label">헤드라인</span><span class="info-value">${c.headlineStyle || '-'}</span></div>
-          <div class="info-row"><span class="info-label">어조</span><span class="info-value">${c.toneOfVoice || '-'}</span></div>
+          <div class="info-row"><span class="info-label">헤드라인</span><span class="info-value">${esc(c.headlineStyle)}</span></div>
+          <div class="info-row"><span class="info-label">어조</span><span class="info-value">${esc(c.toneOfVoice)}</span></div>
           <div style="margin-top:8px;">
             <span class="info-label" style="font-size:13px;">핵심 문구</span>
-            <div class="tag-list">${(c.keyPhrases || []).map(p => `<span class="tag highlight">${p}</span>`).join('')}</div>
+            <div class="tag-list">${(c.keyPhrases || []).map(p => `<span class="tag highlight">${esc(p)}</span>`).join('')}</div>
           </div>
           <div style="margin-top:8px;">
             <span class="info-label" style="font-size:13px;">셀링 포인트</span>
-            <div class="tag-list">${(c.sellingPoints || []).map(p => `<span class="tag">${p}</span>`).join('')}</div>
+            <div class="tag-list">${(c.sellingPoints || []).map(p => `<span class="tag">${esc(p)}</span>`).join('')}</div>
           </div>
         </div>`;
       }
@@ -669,14 +805,14 @@
         const t = analysis.target;
         html += `<div class="card">
           <h3><span class="icon" style="background:#1a2d3d;color:#06b6d4;">T</span> 타겟 분석</h3>
-          <div class="info-row"><span class="info-label">타겟 고객</span><span class="info-value">${t.audience || '-'}</span></div>
+          <div class="info-row"><span class="info-label">타겟 고객</span><span class="info-value">${esc(t.audience)}</span></div>
           <div style="margin-top:8px;">
             <span class="info-label" style="font-size:13px;">고객 고민</span>
-            <div class="tag-list">${(t.painPoints || []).map(p => `<span class="tag">${p}</span>`).join('')}</div>
+            <div class="tag-list">${(t.painPoints || []).map(p => `<span class="tag">${esc(p)}</span>`).join('')}</div>
           </div>
           <div style="margin-top:8px;">
             <span class="info-label" style="font-size:13px;">핵심 혜택</span>
-            <div class="tag-list">${(t.benefits || []).map(p => `<span class="tag highlight">${p}</span>`).join('')}</div>
+            <div class="tag-list">${(t.benefits || []).map(p => `<span class="tag highlight">${esc(p)}</span>`).join('')}</div>
           </div>
         </div>`;
       }
@@ -689,14 +825,14 @@
         html += `<div class="card">
           <h3><span class="icon" style="background:#1f1a3d;color:#a78bfa;">R</span> 종합 평가</h3>
           <div class="score-circle" style="border:3px solid ${scoreColor}; color:${scoreColor};">${score}</div>
-          <p style="text-align:center; font-size:14px; color:#aaa; margin-bottom:12px;">${o.summary || ''}</p>
+          <p style="text-align:center; font-size:14px; color:#aaa; margin-bottom:12px;">${esc(o.summary || '')}</p>
           <div style="margin-top:8px;">
             <span class="info-label" style="font-size:13px;">장점</span>
-            <div class="tag-list">${(o.strengths || []).map(s => `<span class="tag highlight">${s}</span>`).join('')}</div>
+            <div class="tag-list">${(o.strengths || []).map(s => `<span class="tag highlight">${esc(s)}</span>`).join('')}</div>
           </div>
           <div style="margin-top:8px;">
             <span class="info-label" style="font-size:13px;">개선점</span>
-            <div class="tag-list">${(o.weaknesses || []).map(s => `<span class="tag">${s}</span>`).join('')}</div>
+            <div class="tag-list">${(o.weaknesses || []).map(s => `<span class="tag">${esc(s)}</span>`).join('')}</div>
           </div>
         </div>`;
       }
@@ -708,7 +844,7 @@
     // 상세페이지 생성
     // ============================================================
     async function generatePage() {
-      if (!currentAnalysis) return alert('먼저 분석을 실행해주세요');
+      if (!currentAnalysis) return showToast('먼저 분석을 실행해주세요', 'error');
 
       const btn = document.getElementById('btnGenerate');
       btn.disabled = true;
@@ -731,11 +867,12 @@
         currentHtml = data.html;
         currentOutputId = data.outputId;
 
-        // 미리보기 탭으로 전환
         switchTab('preview');
         updatePreview(data.html);
+        detectPlaceholders(data.html);
+        showToast('상세페이지 생성 완료!', 'success');
       } catch (err) {
-        alert('생성 오류: ' + err.message);
+        showToast('생성 오류: ' + err.message, 'error');
       } finally {
         btn.disabled = false;
         btn.textContent = '상세페이지 생성하기';
@@ -752,22 +889,84 @@
       doc.write(html);
       doc.close();
 
-      // iframe 높이 자동 조절
       setTimeout(() => {
         try {
           const h = doc.body.scrollHeight;
-          iframe.style.height = Math.min(h + 40, 2000) + 'px';
+          iframe.style.height = Math.min(h + 40, 3000) + 'px';
         } catch(e) {}
       }, 500);
     }
 
     // ============================================================
+    // 이미지 플레이스홀더 감지 및 교체
+    // ============================================================
+    function detectPlaceholders(html) {
+      const matches = html.match(/data-placeholder-id="(\d+)"/g);
+      const area = document.getElementById('imageReplaceArea');
+
+      if (!matches || matches.length === 0) {
+        area.style.display = 'none';
+        return;
+      }
+
+      area.style.display = 'block';
+      const ids = matches.map(m => m.match(/"(\d+)"/)[1]);
+      const list = document.getElementById('placeholderList');
+      list.innerHTML = ids.map(id => `
+        <div class="placeholder-row">
+          <span>이미지 영역 #${id}</span>
+          <input type="file" accept="image/*" data-pid="${id}" onchange="previewPlaceholder(this, ${id})">
+          <img data-preview="${id}" style="display:none; width:60px; height:60px; object-fit:cover; border-radius:4px;">
+        </div>
+      `).join('');
+    }
+
+    function previewPlaceholder(input, id) {
+      const img = document.querySelector(`[data-preview="${id}"]`);
+      if (input.files[0]) {
+        img.src = URL.createObjectURL(input.files[0]);
+        img.style.display = 'block';
+      }
+    }
+
+    async function applyImageReplacements() {
+      const inputs = document.querySelectorAll('#placeholderList input[type="file"]');
+      let updated = false;
+
+      for (const input of inputs) {
+        if (!input.files[0]) continue;
+        const pid = input.dataset.pid;
+
+        const formData = new FormData();
+        formData.append('image', input.files[0]);
+
+        const res = await fetch('/api/upload-image', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!data.success) continue;
+
+        // HTML에서 해당 플레이스홀더를 이미지로 교체
+        const placeholder = new RegExp(
+          `<div[^>]*data-placeholder-id="${pid}"[^>]*>[\\s\\S]*?<\\/div>`,
+          'i'
+        );
+        currentHtml = currentHtml.replace(placeholder,
+          `<img src="${data.url}" style="width:100%; display:block;" data-placeholder-id="${pid}">`
+        );
+        updated = true;
+      }
+
+      if (updated) {
+        updatePreview(currentHtml);
+        showToast('이미지가 교체되었습니다', 'success');
+      }
+    }
+
+    // ============================================================
     // JPG 내보내기
     // ============================================================
-    async function exportJpg() {
-      if (!currentHtml) return alert('먼저 상세페이지를 생성해주세요');
+    async function exportJpg(btn) {
+      if (!currentHtml) return showToast('먼저 상세페이지를 생성해주세요', 'error');
 
-      const btn = event.target;
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span>JPG 변환 중...';
 
@@ -783,15 +982,15 @@
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
 
-        // 결과 표시
         const resultDiv = document.getElementById('jpgResult');
         resultDiv.style.display = 'block';
         document.getElementById('jpgPreview').src = data.filePath + '?t=' + Date.now();
         document.getElementById('jpgInfo').textContent = `${data.dimensions} | ${data.fileSize}`;
         document.getElementById('jpgDownloadLink').href = data.filePath;
         document.getElementById('jpgDownloadLink').download = data.fileName;
+        showToast('JPG 생성 완료!', 'success');
       } catch (err) {
-        alert('JPG 변환 오류: ' + err.message);
+        showToast('JPG 변환 오류: ' + err.message, 'error');
       } finally {
         btn.disabled = false;
         btn.textContent = 'JPG로 내보내기';
@@ -799,10 +998,24 @@
     }
 
     // ============================================================
-    // 다시 생성
+    // 분석 JSON 내보내기
     // ============================================================
-    function regenerate() {
-      switchTab('generate');
+    async function exportAnalysisJson() {
+      if (!currentAnalysis) return showToast('분석 데이터가 없습니다', 'error');
+
+      const res = await fetch('/api/export-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analysis: currentAnalysis, sessionId: currentSessionId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        const a = document.createElement('a');
+        a.href = data.filePath;
+        a.download = data.fileName;
+        a.click();
+        showToast('분석 JSON 저장됨', 'success');
+      }
     }
 
     // ============================================================
@@ -820,6 +1033,7 @@
       currentHtml = document.getElementById('htmlEditor').value;
       updatePreview(currentHtml);
       closeHtmlEditor();
+      showToast('HTML 수정 적용됨', 'success');
     }
 
     // ============================================================
@@ -828,13 +1042,8 @@
     function switchTab(tabName) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(t => t.classList.remove('active'));
-      document.querySelector(`.tab-panel#tab-${tabName}`).classList.add('active');
-      document.querySelectorAll('.tab').forEach(t => {
-        if (t.textContent.includes(
-          tabName === 'analysis' ? '분석' :
-          tabName === 'generate' ? '생성' : '미리보기'
-        )) t.classList.add('active');
-      });
+      document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+      document.getElementById(`tab-${tabName}`).classList.add('active');
     }
 
     function showProgress(show) {
@@ -845,9 +1054,29 @@
       document.getElementById('progressText').textContent = text;
     }
 
+    function showToast(msg, type = '') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast ' + type;
+      requestAnimationFrame(() => t.classList.add('show'));
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    function esc(str) {
+      if (!str) return '-';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
     // Enter 키로 분석 시작
     document.getElementById('urlInput').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') startAnalysis();
+    });
+
+    // ESC로 모달 닫기
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeHtmlEditor();
     });
   </script>
 </body>
