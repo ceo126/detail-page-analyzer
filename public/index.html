@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>상세페이지 분석기</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e1e4e8;
+      min-height: 100vh;
+    }
+
+    /* 헤더 */
+    .header {
+      background: linear-gradient(135deg, #1a1d27 0%, #252830 100%);
+      border-bottom: 1px solid #2d3140;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header h1 { font-size: 20px; font-weight: 700; color: #fff; }
+    .header .badge {
+      background: #3b82f6;
+      color: #fff;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    /* URL 입력 영역 */
+    .url-section {
+      max-width: 900px;
+      margin: 32px auto;
+      padding: 0 24px;
+    }
+    .url-input-wrapper {
+      display: flex;
+      gap: 12px;
+      background: #1a1d27;
+      border: 1px solid #2d3140;
+      border-radius: 12px;
+      padding: 8px;
+    }
+    .url-input-wrapper input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-size: 15px;
+      padding: 12px 16px;
+      outline: none;
+    }
+    .url-input-wrapper input::placeholder { color: #555; }
+    .btn-analyze {
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      color: #fff;
+      border: none;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .btn-analyze:hover { background: linear-gradient(135deg, #2563eb, #1d4ed8); transform: translateY(-1px); }
+    .btn-analyze:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* 진행 상태 */
+    .progress-section {
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 0 24px;
+      display: none;
+    }
+    .progress-bar-bg {
+      background: #1a1d27;
+      border-radius: 8px;
+      overflow: hidden;
+      height: 6px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+      border-radius: 8px;
+      transition: width 0.5s;
+      width: 0%;
+    }
+    .progress-text {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #888;
+      text-align: center;
+    }
+
+    /* 메인 컨텐츠 */
+    .main-content {
+      max-width: 1400px;
+      margin: 24px auto;
+      padding: 0 24px;
+      display: none;
+    }
+
+    /* 탭 */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #2d3140;
+      padding-bottom: 0;
+    }
+    .tab {
+      padding: 10px 20px;
+      background: transparent;
+      border: none;
+      color: #888;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+    .tab:hover { color: #ccc; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* 분석 결과 패널 */
+    .analysis-grid {
+      display: grid;
+      grid-template-columns: 350px 1fr;
+      gap: 24px;
+    }
+    .screenshot-preview {
+      background: #1a1d27;
+      border: 1px solid #2d3140;
+      border-radius: 12px;
+      padding: 16px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .screenshot-preview img {
+      width: 100%;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .screenshot-preview h3 {
+      font-size: 14px;
+      color: #888;
+      margin-bottom: 12px;
+    }
+    .analysis-result {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* 카드 */
+    .card {
+      background: #1a1d27;
+      border: 1px solid #2d3140;
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card h3 .icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #1f2233;
+      font-size: 14px;
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: #888; }
+    .info-value { color: #e1e4e8; font-weight: 500; }
+
+    .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .tag {
+      background: #252830;
+      border: 1px solid #2d3140;
+      color: #a0a4b0;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    .tag.highlight { background: #1e3a5f; border-color: #3b82f6; color: #7cb3f4; }
+
+    .color-swatches { display: flex; gap: 8px; margin-top: 8px; }
+    .swatch {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 2px solid #2d3140;
+      position: relative;
+    }
+    .swatch span {
+      position: absolute;
+      bottom: -18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      color: #666;
+      white-space: nowrap;
+    }
+
+    .structure-list { list-style: none; }
+    .structure-item {
+      padding: 10px 14px;
+      background: #252830;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      border-left: 3px solid #3b82f6;
+    }
+    .structure-item .name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+    .structure-item .desc { font-size: 12px; color: #888; }
+
+    .score-circle {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0 auto 12px;
+    }
+
+    /* 생성 패널 */
+    .generate-section {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .edit-area {
+      background: #1a1d27;
+      border: 1px solid #2d3140;
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .edit-area label { font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px; }
+    .edit-area textarea {
+      width: 100%;
+      min-height: 100px;
+      background: #252830;
+      border: 1px solid #2d3140;
+      border-radius: 8px;
+      color: #e1e4e8;
+      padding: 12px;
+      font-size: 14px;
+      resize: vertical;
+      outline: none;
+    }
+    .edit-area textarea:focus { border-color: #3b82f6; }
+
+    .btn-generate {
+      background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+      color: #fff;
+      border: none;
+      padding: 14px 32px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-generate:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(139,92,246,0.3); }
+    .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* 미리보기 패널 */
+    .preview-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    .preview-panel {
+      background: #1a1d27;
+      border: 1px solid #2d3140;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .preview-panel-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #2d3140;
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .preview-iframe-wrap {
+      padding: 16px;
+      background: #fff;
+      display: flex;
+      justify-content: center;
+    }
+    .preview-iframe-wrap iframe {
+      width: 860px;
+      height: 600px;
+      border: none;
+      transform-origin: top center;
+    }
+    .preview-full {
+      grid-column: 1 / -1;
+    }
+    .preview-full .preview-iframe-wrap iframe {
+      width: 860px;
+      height: 800px;
+    }
+
+    /* JPG 결과 영역 */
+    .jpg-result {
+      background: #1a1d27;
+      border: 1px solid #2d3140;
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+    }
+    .jpg-result img {
+      max-width: 100%;
+      max-height: 500px;
+      border-radius: 8px;
+      border: 1px solid #2d3140;
+      object-fit: contain;
+    }
+    .jpg-info { margin-top: 12px; font-size: 13px; color: #888; }
+
+    .btn-download {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #fff;
+      border: none;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 16px;
+      transition: all 0.2s;
+    }
+    .btn-download:hover { transform: translateY(-1px); }
+
+    .btn-secondary {
+      background: #252830;
+      border: 1px solid #2d3140;
+      color: #e1e4e8;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover { border-color: #3b82f6; }
+
+    .actions { display: flex; gap: 10px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+
+    /* 로딩 */
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* 플랫폼 배지 */
+    .platform-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .platform-badge.coupang { background: #7b2d26; color: #ff6b6b; }
+    .platform-badge.naver { background: #1a4d2e; color: #4ade80; }
+    .platform-badge.wadiz { background: #2d2766; color: #a78bfa; }
+    .platform-badge.other { background: #333; color: #999; }
+
+    /* 반응형 */
+    @media (max-width: 1000px) {
+      .analysis-grid { grid-template-columns: 1fr; }
+      .preview-container { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>상세페이지 분석기</h1>
+    <span class="badge">Gemini Vision</span>
+  </div>
+
+  <!-- URL 입력 -->
+  <div class="url-section">
+    <div class="url-input-wrapper">
+      <input type="text" id="urlInput" placeholder="분석할 상세페이지 URL을 입력하세요 (쿠팡, 네이버, 와디즈, 자사몰 등)">
+      <button class="btn-analyze" id="btnAnalyze" onclick="startAnalysis()">분석 시작</button>
+    </div>
+  </div>
+
+  <!-- 진행 상태 -->
+  <div class="progress-section" id="progressSection">
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressBar"></div>
+    </div>
+    <div class="progress-text" id="progressText">준비 중...</div>
+  </div>
+
+  <!-- 메인 컨텐츠 -->
+  <div class="main-content" id="mainContent">
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('analysis')">분석 결과</button>
+      <button class="tab" onclick="switchTab('generate')">상세페이지 생성</button>
+      <button class="tab" onclick="switchTab('preview')">미리보기 / 내보내기</button>
+    </div>
+
+    <!-- 탭 1: 분석 결과 -->
+    <div class="tab-panel active" id="tab-analysis">
+      <div class="analysis-grid">
+        <div class="screenshot-preview" id="screenshotPreview">
+          <h3>원본 스크린샷</h3>
+        </div>
+        <div class="analysis-result" id="analysisResult"></div>
+      </div>
+    </div>
+
+    <!-- 탭 2: 생성 -->
+    <div class="tab-panel" id="tab-generate">
+      <div class="generate-section">
+        <div class="edit-area">
+          <label>수정 / 추가 요청 (선택사항)</label>
+          <textarea id="editInstructions" placeholder="예: 색상을 더 밝게 해줘 / 후기 섹션을 추가해줘 / 가격을 49,000원으로 변경해줘"></textarea>
+        </div>
+        <div style="text-align: center;">
+          <button class="btn-generate" id="btnGenerate" onclick="generatePage()">상세페이지 생성하기</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 탭 3: 미리보기 -->
+    <div class="tab-panel" id="tab-preview">
+      <div class="preview-full">
+        <div class="preview-panel">
+          <div class="preview-panel-header">
+            <span>생성된 상세페이지 미리보기 (860px)</span>
+            <div style="display:flex; gap:8px;">
+              <button class="btn-secondary" onclick="regenerate()">다시 생성</button>
+              <button class="btn-secondary" onclick="editHtml()">HTML 편집</button>
+            </div>
+          </div>
+          <div class="preview-iframe-wrap">
+            <iframe id="previewFrame"></iframe>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:24px;">
+        <button class="btn-generate" onclick="exportJpg()">JPG로 내보내기</button>
+      </div>
+
+      <div class="jpg-result" id="jpgResult" style="display:none; margin-top:24px;">
+        <h3 style="margin-bottom:16px;">JPG 생성 완료</h3>
+        <img id="jpgPreview" src="" alt="생성된 JPG">
+        <div class="jpg-info" id="jpgInfo"></div>
+        <div class="actions">
+          <a id="jpgDownloadLink" href="" download>
+            <button class="btn-download">JPG 다운로드</button>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HTML 편집 모달 -->
+  <div id="htmlEditorModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:100; padding:40px;">
+    <div style="max-width:1000px; margin:0 auto; height:100%; display:flex; flex-direction:column; background:#1a1d27; border-radius:12px; border:1px solid #2d3140;">
+      <div style="padding:16px 20px; border-bottom:1px solid #2d3140; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:600;">HTML 직접 편집</span>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-secondary" onclick="applyHtmlEdit()">적용</button>
+          <button class="btn-secondary" onclick="closeHtmlEditor()">닫기</button>
+        </div>
+      </div>
+      <textarea id="htmlEditor" style="flex:1; background:#252830; border:none; color:#e1e4e8; padding:20px; font-family:monospace; font-size:13px; resize:none; outline:none;"></textarea>
+    </div>
+  </div>
+
+  <script>
+    let currentSessionId = null;
+    let currentAnalysis = null;
+    let currentHtml = null;
+    let currentOutputId = null;
+
+    // ============================================================
+    // 분석 시작
+    // ============================================================
+    async function startAnalysis() {
+      const url = document.getElementById('urlInput').value.trim();
+      if (!url) return alert('URL을 입력해주세요');
+
+      const btn = document.getElementById('btnAnalyze');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>분석 중...';
+
+      showProgress(true);
+      updateProgress(10, '페이지 접속 및 크롤링 중...');
+
+      try {
+        // 1단계: 크롤링
+        const crawlRes = await fetch('/api/crawl', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        const crawlData = await crawlRes.json();
+        if (!crawlData.success) throw new Error(crawlData.error);
+
+        currentSessionId = crawlData.sessionId;
+        updateProgress(40, 'AI 분석 중... (Gemini Vision)');
+
+        // 2단계: AI 분석
+        const analyzeRes = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: crawlData.sessionId,
+            pageData: crawlData.pageData
+          })
+        });
+        const analyzeData = await analyzeRes.json();
+        if (!analyzeData.success) throw new Error(analyzeData.error);
+
+        currentAnalysis = analyzeData.analysis;
+        updateProgress(100, '분석 완료!');
+
+        // 결과 표시
+        renderScreenshots(crawlData);
+        renderAnalysis(analyzeData.analysis, crawlData);
+        document.getElementById('mainContent').style.display = 'block';
+        switchTab('analysis');
+
+        setTimeout(() => showProgress(false), 1000);
+      } catch (err) {
+        alert('분석 오류: ' + err.message);
+        showProgress(false);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '분석 시작';
+      }
+    }
+
+    // ============================================================
+    // 스크린샷 미리보기
+    // ============================================================
+    function renderScreenshots(crawlData) {
+      const container = document.getElementById('screenshotPreview');
+      let html = '<h3>원본 스크린샷</h3>';
+
+      // 플랫폼 배지
+      const p = crawlData.platform;
+      const platformNames = { coupang: '쿠팡', naver: '네이버', wadiz: '와디즈', other: '자사몰/기타' };
+      html += `<div class="platform-badge ${p}" style="margin-bottom:12px;">${platformNames[p] || p}</div>`;
+
+      // 스크린샷 이미지들
+      for (let i = 0; i < crawlData.screenshotCount; i++) {
+        html += `<img src="/screenshots/${crawlData.sessionId}/screenshot_${i}.jpg" alt="screenshot ${i}">`;
+      }
+      container.innerHTML = html;
+    }
+
+    // ============================================================
+    // 분석 결과 렌더링
+    // ============================================================
+    function renderAnalysis(analysis, crawlData) {
+      const container = document.getElementById('analysisResult');
+      let html = '';
+
+      // 제품 정보
+      if (analysis.product) {
+        const p = analysis.product;
+        html += `<div class="card">
+          <h3><span class="icon" style="background:#1e3a5f;color:#3b82f6;">P</span> 제품 정보</h3>
+          <div class="info-row"><span class="info-label">제품명</span><span class="info-value">${p.name || '-'}</span></div>
+          <div class="info-row"><span class="info-label">가격</span><span class="info-value">${p.price || '-'}</span></div>
+          <div class="info-row"><span class="info-label">원가</span><span class="info-value">${p.originalPrice || '-'}</span></div>
+          <div class="info-row"><span class="info-label">카테고리</span><span class="info-value">${p.category || '-'}</span></div>
+          <div class="info-row"><span class="info-label">브랜드</span><span class="info-value">${p.brand || '-'}</span></div>
+        </div>`;
+      }
+
+      // 디자인 분석
+      if (analysis.design) {
+        const d = analysis.design;
+        html += `<div class="card">
+          <h3><span class="icon" style="background:#2d1f4e;color:#8b5cf6;">D</span> 디자인 분석</h3>
+          <div class="info-row"><span class="info-label">톤</span><span class="info-value">${d.tone || '-'}</span></div>
+          <div class="info-row"><span class="info-label">폰트</span><span class="info-value">${d.fontStyle || '-'}</span></div>
+          <div class="info-row"><span class="info-label">이미지 스타일</span><span class="info-value">${d.imageStyle || '-'}</span></div>
+          <div style="margin-top:10px;">
+            <span class="info-label" style="font-size:13px;">메인 컬러</span>
+            <div class="color-swatches">
+              ${(d.mainColors || []).map(c => `<div class="swatch" style="background:${c}"><span>${c}</span></div>`).join('')}
+            </div>
+          </div>
+        </div>`;
+      }
+
+      // 페이지 구조
+      if (analysis.structure && analysis.structure.length) {
+        html += `<div class="card">
+          <h3><span class="icon" style="background:#1a3d2e;color:#10b981;">S</span> 페이지 구조</h3>
+          <ul class="structure-list">
+            ${analysis.structure.map((s, i) => `
+              <li class="structure-item">
+                <div class="name">${i + 1}. ${s.section}</div>
+                <div class="desc">${s.description || ''} ${s.layout ? '| ' + s.layout : ''}</div>
+              </li>
+            `).join('')}
+          </ul>
+        </div>`;
+      }
+
+      // 카피라이팅
+      if (analysis.copywriting) {
+        const c = analysis.copywriting;
+        html += `<div class="card">
+          <h3><span class="icon" style="background:#3d2e1a;color:#f59e0b;">C</span> 카피라이팅 분석</h3>
+          <div class="info-row"><span class="info-label">헤드라인</span><span class="info-value">${c.headlineStyle || '-'}</span></div>
+          <div class="info-row"><span class="info-label">어조</span><span class="info-value">${c.toneOfVoice || '-'}</span></div>
+          <div style="margin-top:8px;">
+            <span class="info-label" style="font-size:13px;">핵심 문구</span>
+            <div class="tag-list">${(c.keyPhrases || []).map(p => `<span class="tag highlight">${p}</span>`).join('')}</div>
+          </div>
+          <div style="margin-top:8px;">
+            <span class="info-label" style="font-size:13px;">셀링 포인트</span>
+            <div class="tag-list">${(c.sellingPoints || []).map(p => `<span class="tag">${p}</span>`).join('')}</div>
+          </div>
+        </div>`;
+      }
+
+      // 타겟
+      if (analysis.target) {
+        const t = analysis.target;
+        html += `<div class="card">
+          <h3><span class="icon" style="background:#1a2d3d;color:#06b6d4;">T</span> 타겟 분석</h3>
+          <div class="info-row"><span class="info-label">타겟 고객</span><span class="info-value">${t.audience || '-'}</span></div>
+          <div style="margin-top:8px;">
+            <span class="info-label" style="font-size:13px;">고객 고민</span>
+            <div class="tag-list">${(t.painPoints || []).map(p => `<span class="tag">${p}</span>`).join('')}</div>
+          </div>
+          <div style="margin-top:8px;">
+            <span class="info-label" style="font-size:13px;">핵심 혜택</span>
+            <div class="tag-list">${(t.benefits || []).map(p => `<span class="tag highlight">${p}</span>`).join('')}</div>
+          </div>
+        </div>`;
+      }
+
+      // 종합 평가
+      if (analysis.overall) {
+        const o = analysis.overall;
+        const score = o.score || 0;
+        const scoreColor = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
+        html += `<div class="card">
+          <h3><span class="icon" style="background:#1f1a3d;color:#a78bfa;">R</span> 종합 평가</h3>
+          <div class="score-circle" style="border:3px solid ${scoreColor}; color:${scoreColor};">${score}</div>
+          <p style="text-align:center; font-size:14px; color:#aaa; margin-bottom:12px;">${o.summary || ''}</p>
+          <div style="margin-top:8px;">
+            <span class="info-label" style="font-size:13px;">장점</span>
+            <div class="tag-list">${(o.strengths || []).map(s => `<span class="tag highlight">${s}</span>`).join('')}</div>
+          </div>
+          <div style="margin-top:8px;">
+            <span class="info-label" style="font-size:13px;">개선점</span>
+            <div class="tag-list">${(o.weaknesses || []).map(s => `<span class="tag">${s}</span>`).join('')}</div>
+          </div>
+        </div>`;
+      }
+
+      container.innerHTML = html;
+    }
+
+    // ============================================================
+    // 상세페이지 생성
+    // ============================================================
+    async function generatePage() {
+      if (!currentAnalysis) return alert('먼저 분석을 실행해주세요');
+
+      const btn = document.getElementById('btnGenerate');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>생성 중...';
+
+      try {
+        const edits = document.getElementById('editInstructions').value.trim();
+
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            analysis: currentAnalysis,
+            userEdits: edits || null
+          })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+
+        currentHtml = data.html;
+        currentOutputId = data.outputId;
+
+        // 미리보기 탭으로 전환
+        switchTab('preview');
+        updatePreview(data.html);
+      } catch (err) {
+        alert('생성 오류: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '상세페이지 생성하기';
+      }
+    }
+
+    // ============================================================
+    // 미리보기 업데이트
+    // ============================================================
+    function updatePreview(html) {
+      const iframe = document.getElementById('previewFrame');
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.open();
+      doc.write(html);
+      doc.close();
+
+      // iframe 높이 자동 조절
+      setTimeout(() => {
+        try {
+          const h = doc.body.scrollHeight;
+          iframe.style.height = Math.min(h + 40, 2000) + 'px';
+        } catch(e) {}
+      }, 500);
+    }
+
+    // ============================================================
+    // JPG 내보내기
+    // ============================================================
+    async function exportJpg() {
+      if (!currentHtml) return alert('먼저 상세페이지를 생성해주세요');
+
+      const btn = event.target;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>JPG 변환 중...';
+
+      try {
+        const res = await fetch('/api/export-jpg', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            html: currentHtml,
+            outputId: currentOutputId
+          })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+
+        // 결과 표시
+        const resultDiv = document.getElementById('jpgResult');
+        resultDiv.style.display = 'block';
+        document.getElementById('jpgPreview').src = data.filePath + '?t=' + Date.now();
+        document.getElementById('jpgInfo').textContent = `${data.dimensions} | ${data.fileSize}`;
+        document.getElementById('jpgDownloadLink').href = data.filePath;
+        document.getElementById('jpgDownloadLink').download = data.fileName;
+      } catch (err) {
+        alert('JPG 변환 오류: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'JPG로 내보내기';
+      }
+    }
+
+    // ============================================================
+    // 다시 생성
+    // ============================================================
+    function regenerate() {
+      switchTab('generate');
+    }
+
+    // ============================================================
+    // HTML 편집
+    // ============================================================
+    function editHtml() {
+      if (!currentHtml) return;
+      document.getElementById('htmlEditor').value = currentHtml;
+      document.getElementById('htmlEditorModal').style.display = 'block';
+    }
+    function closeHtmlEditor() {
+      document.getElementById('htmlEditorModal').style.display = 'none';
+    }
+    function applyHtmlEdit() {
+      currentHtml = document.getElementById('htmlEditor').value;
+      updatePreview(currentHtml);
+      closeHtmlEditor();
+    }
+
+    // ============================================================
+    // 유틸리티
+    // ============================================================
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(t => t.classList.remove('active'));
+      document.querySelector(`.tab-panel#tab-${tabName}`).classList.add('active');
+      document.querySelectorAll('.tab').forEach(t => {
+        if (t.textContent.includes(
+          tabName === 'analysis' ? '분석' :
+          tabName === 'generate' ? '생성' : '미리보기'
+        )) t.classList.add('active');
+      });
+    }
+
+    function showProgress(show) {
+      document.getElementById('progressSection').style.display = show ? 'block' : 'none';
+    }
+    function updateProgress(pct, text) {
+      document.getElementById('progressBar').style.width = pct + '%';
+      document.getElementById('progressText').textContent = text;
+    }
+
+    // Enter 키로 분석 시작
+    document.getElementById('urlInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') startAnalysis();
+    });
+  </script>
+</body>
+</html>
