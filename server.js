@@ -86,7 +86,13 @@ app.post('/api/crawl', async (req, res) => {
     const b = await getBrowser();
     context = await b.newContext({
       viewport: { width: 1400, height: 900 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      extraHTTPHeaders: {
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        'sec-ch-ua-platform': '"Windows"',
+      }
     });
     const page = await context.newPage();
 
@@ -95,8 +101,10 @@ app.post('/api/crawl', async (req, res) => {
       await dialog.dismiss().catch(() => {});
     });
 
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(2000);
+    // domcontentloaded로 먼저 로드 후, networkidle 대기 시도 (실패해도 진행)
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.waitForLoadState('networkidle').catch(() => {});
+    await page.waitForTimeout(3000);
 
     // 플랫폼 감지
     const platform = detectPlatform(url);

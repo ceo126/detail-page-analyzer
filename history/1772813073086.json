@@ -1,0 +1,73 @@
+{
+  "sessionId": "1772813073086",
+  "url": "",
+  "platform": "musinsa",
+  "productName": "(DOD) ī ǪǪ Ŷ M - KHAKI",
+  "analysis": {
+    "product": {
+      "name": "(DOD) ī ǪǪ Ŷ M - KHAKI",
+      "price": "알 수 없음",
+      "originalPrice": null,
+      "category": "알 수 없음",
+      "brand": "DOD"
+    },
+    "design": {
+      "tone": "미니멀",
+      "mainColors": [
+        "#FFFFFF",
+        "#000000"
+      ],
+      "backgroundColor": "#FFFFFF",
+      "fontStyle": "깔끔하고 가독성이 좋은 폰트 사용",
+      "imageStyle": "제품 이미지가 없는 텍스트 위주의 상세페이지"
+    },
+    "structure": [
+      {
+        "section": "상단 네비게이션",
+        "description": "쇼핑몰의 카테고리, 검색, 마이페이지, 장바구니, 로그인/회원가입 메뉴를 제공",
+        "layout": "가로 배치"
+      },
+      {
+        "section": "상품 정보",
+        "description": "상품명, 가격, 할인 정보 등 상품의 기본적인 정보를 제공",
+        "layout": "세로 배치"
+      },
+      {
+        "section": "하단 정보",
+        "description": "공지사항, 결제 혜택, 어바웃 무신사, 비즈니스, 파트너 문의, 고객지원 등 쇼핑몰 관련 정보를 제공",
+        "layout": "가로/세로 혼합 배치"
+      }
+    ],
+    "copywriting": {
+      "headlineStyle": "일반적인 상품명",
+      "toneOfVoice": "정보 전달 위주의 건조한 어조",
+      "keyPhrases": [
+        "새로고침"
+      ],
+      "sellingPoints": []
+    },
+    "target": {
+      "audience": "온라인 쇼핑몰 사용자",
+      "painPoints": [
+        "상품 정보 부족",
+        "상세페이지 정보 부족"
+      ],
+      "benefits": [
+        "무신사에서 상품을 구매할 수 있음"
+      ]
+    },
+    "overall": {
+      "strengths": [
+        "깔끔하고 정돈된 레이아웃"
+      ],
+      "weaknesses": [
+        "상품 정보 부족",
+        "이미지 없음",
+        "가격 정보 없음"
+      ],
+      "score": 30,
+      "summary": "현재 상세페이지는 상품에 대한 정보가 매우 부족하며, 구매를 유도하기 어렵습니다. 이미지, 가격, 상세 설명 등 상품 정보 보완이 필요합니다."
+    }
+  },
+  "createdAt": "2026-03-06T16:04:45.424Z"
+}
