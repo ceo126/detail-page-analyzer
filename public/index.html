@@ -446,9 +446,18 @@
         </div>
         <!-- 생성 탭 -->
         <div class="tab-panel" id="tab-generate">
-          <div class="label">수정/추가 요청 (선택)</div>
-          <textarea class="gen-textarea" id="editInstructions" placeholder="예: 색상을 더 밝게 / 후기 섹션 추가 / 가격 49,000원으로 변경"></textarea>
-          <button class="btn btn-purple" id="btnGenerate" onclick="generatePage()">상세페이지 생성하기</button>
+          <div class="card" style="border-color:#3b82f6; margin-bottom:16px;">
+            <div class="card-title"><span class="card-icon" style="background:#1e3a5f;color:#3b82f6;">K</span>키워드 기반 생성</div>
+            <p style="font-size:12px; color:#888; margin-bottom:10px; line-height:1.5;">원본 상세페이지의 디자인/구조를 그대로 유지하면서, 입력한 키워드(상품)에 맞게 내용을 새로 생성합니다.</p>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="keywordInput" placeholder="예: 무선 핸디 청소기, 캠핑 접이식 의자, 유기농 단백질 쉐이크..."
+                style="flex:1; background:#252830; border:1px solid #2d3140; border-radius:8px; color:#fff; padding:10px 14px; font-size:14px; outline:none;"
+                onkeydown="if(event.key==='Enter') generatePage()">
+              <button class="btn btn-purple" id="btnGenerate" onclick="generatePage()" style="white-space:nowrap;">생성</button>
+            </div>
+          </div>
+          <div class="label">추가 요청사항 (선택)</div>
+          <textarea class="gen-textarea" id="editInstructions" placeholder="예: 가격을 39,000원으로 / 후기 섹션 추가 / 톤을 더 고급스럽게"></textarea>
         </div>
         <!-- 미리보기 탭 -->
         <div class="tab-panel" id="tab-preview">
@@ -673,6 +682,8 @@
     // ============================================================
     async function generatePage() {
       if (!currentAnalysis) return showToast('먼저 분석하세요', 'error');
+      const keyword = document.getElementById('keywordInput').value.trim();
+      if (!keyword) return showToast('키워드를 입력해주세요', 'error');
       const btn = document.getElementById('btnGenerate');
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span>생성 중...';
@@ -680,7 +691,12 @@
         const res = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ analysis: currentAnalysis, userEdits: document.getElementById('editInstructions').value.trim() || null })
+          body: JSON.stringify({
+            analysis: currentAnalysis,
+            keyword,
+            sessionId: currentSessionId,
+            userEdits: document.getElementById('editInstructions').value.trim() || null
+          })
         });
         const data = await res.json();
         if (!data.success) throw new Error(data.error);

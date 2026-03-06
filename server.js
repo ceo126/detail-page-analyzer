@@ -364,35 +364,79 @@ ${pageData ? `\n추가 추출 텍스트:\n- 제품명: ${pageData.productName ||
 // 3) 분석 결과 기반 상세페이지 HTML 생성
 // ============================================================
 app.post('/api/generate', async (req, res) => {
-  const { analysis, userEdits } = req.body;
+  const { analysis, userEdits, keyword, sessionId: reqSessionId } = req.body;
   if (!analysis) return res.status(400).json({ error: '분석 데이터 필요' });
 
   try {
-    const editInstructions = userEdits ? `\n\n사용자 수정 요청:\n${userEdits}` : '';
+    const editInstructions = userEdits ? `\n\n추가 요청사항:\n${userEdits}` : '';
 
-    const prompt = `당신은 쇼핑몰 상세페이지 전문 디자이너입니다.
-아래 분석 결과를 바탕으로 자사몰용 상세페이지 HTML을 생성하세요.
+    // 원본 스크린샷을 Vision에 같이 전달 (구조 복제 정확도 향상)
+    let imageParts = [];
+    if (reqSessionId) {
+      const screenshotDir = path.join(DIRS.screenshots, reqSessionId);
+      if (fs.existsSync(screenshotDir)) {
+        const files = fs.readdirSync(screenshotDir)
+          .filter(f => f.startsWith('screenshot_'))
+          .sort()
+          .slice(0, 6);
+        for (const file of files) {
+          const buffer = fs.readFileSync(path.join(screenshotDir, file));
+          const resized = await sharp(buffer)
+            .resize(800, null, { withoutEnlargement: true })
+            .jpeg({ quality: 65 })
+            .toBuffer();
+          imageParts.push({
+            inlineData: { data: resized.toString('base64'), mimeType: 'image/jpeg' }
+          });
+        }
+      }
+    }
 
-분석 결과:
+    // 키워드 모드 vs 일반 모드
+    const keywordSection = keyword
+      ? `\n## 핵심 지시: 키워드 기반 새 상세페이지 생성
+사용자가 입력한 키워드/상품: "${keyword}"
+
+이 키워드의 상품을 위한 **완전히 새로운 상세페이지**를 만들어야 합니다.
+단, 원본 상세페이지의 아래 요소를 **최대한 똑같이** 복제하세요:
+- 전체 레이아웃 구조 (섹션 순서, 배치 방식)
+- 디자인 톤 & 컬러 팔레트 (배경색, 강조색, 폰트 스타일)
+- 각 섹션의 시각적 레이아웃 (가로배치, 아이콘+텍스트, 비교표 등)
+- 카피라이팅 스타일 (어조, 헤드라인 방식, 강조 패턴)
+- CTA 버튼 스타일, 구분선, 여백 패턴
+
+바꿔야 할 것:
+- 제품명, 가격, 브랜드 → "${keyword}" 관련 내용으로 변경
+- 제품 설명, 셀링포인트, 혜택 → "${keyword}"에 맞게 새로 작성
+- 후기/수치 → "${keyword}"에 맞는 그럴듯한 내용으로 생성
+`
+      : '';
+
+    const prompt = `당신은 쇼핑몰 상세페이지 전문 디자이너 겸 카피라이터입니다.
+${keyword ? '아래 첨부된 스크린샷은 **참고할 원본 상세페이지**입니다. 이 페이지의 디자인/구조를 최대한 똑같이 따라하되, 새로운 키워드로 내용을 교체하세요.' : '아래 분석 결과를 바탕으로 자사몰용 상세페이지 HTML을 생성하세요.'}
+${keywordSection}
+
+분석 결과 (원본 페이지):
 ${JSON.stringify(analysis, null, 2)}
 ${editInstructions}
 
-요구사항:
-1. 폭 860px (자사몰 상세페이지 표준 너비)
+## HTML 생성 요구사항:
+1. 폭 860px (자사몰 상세페이지 표준)
 2. 세로로 긴 단일 페이지 형태
-3. 분석된 구조(structure)를 따르되, 더 효과적인 배치로 개선
-4. 분석된 디자인 톤과 컬러를 반영
-5. 분석된 카피라이팅 스타일을 반영하여 텍스트 작성
-6. 셀링 포인트를 효과적으로 강조
-7. 이미지 영역은 플레이스홀더로 표시 (회색 박스 + "이미지 영역" 텍스트, 각 플레이스홀더에 data-placeholder-id="1", "2"... 속성 추가)
-8. 모든 텍스트는 한국어
+3. 원본의 구조(structure)를 **동일한 순서와 레이아웃**으로 재현
+4. 원본의 디자인 톤, 컬러, 폰트 스타일을 **정확히** 반영
+5. ${keyword ? `"${keyword}" 상품에 맞는 매력적인 카피라이팅` : '분석된 카피라이팅 스타일 반영'}
+6. 셀링 포인트를 시각적으로 효과적으로 강조
+7. 이미지 영역은 플레이스홀더 (회색 박스 + "이미지 영역", data-placeholder-id="1","2"... 속성)
+8. 모든 텍스트 한국어
 9. inline CSS만 사용 (외부 CSS 없음)
-10. 배경색, 구분선, 아이콘(이모지 활용) 등으로 시각적으로 풍성하게
+10. 배경색, 구분선, 그라데이션, 아이콘(이모지) 등으로 시각적으로 풍성하게
+11. 원본에서 발견된 약점(weaknesses)은 개선하여 반영
 
 반드시 완전한 HTML 코드만 출력하세요. \`\`\`html 태그로 감싸세요.
 <html>부터 </html>까지 포함.`;
 
-    const text = await callGemini(prompt);
+    const text = await callGemini(prompt, imageParts);
 
     // HTML 추출
     let html = '';
