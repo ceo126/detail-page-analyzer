@@ -259,50 +259,75 @@ app.post('/api/analyze', async (req, res) => {
       });
     }
 
-    const prompt = `당신은 쇼핑몰 상세페이지 분석 전문가입니다.
+    const prompt = `당신은 10년 경력의 쇼핑몰 상세페이지 마케팅 분석 전문가입니다.
 아래 스크린샷은 하나의 상품 상세페이지를 위에서부터 순서대로 캡처한 것입니다.
-${pageData ? `\n추출된 텍스트 정보:\n- 제품명: ${pageData.productName || '알 수 없음'}\n- 가격: ${pageData.price || '알 수 없음'}\n- 본문 텍스트: ${(pageData.texts || []).slice(0, 30).join(' / ')}` : ''}
+이미지 속에 보이는 모든 텍스트, 숫자, 문구를 빠짐없이 읽고 분석하세요.
 
-다음 항목을 분석하여 **반드시 아래 JSON 형식으로만** 응답하세요:
+${pageData ? `\n추가 추출 텍스트:\n- 제품명: ${pageData.productName || '알 수 없음'}\n- 가격: ${pageData.price || '알 수 없음'}\n- 본문: ${(pageData.texts || []).slice(0, 50).join(' / ')}` : ''}
+
+## 분석 지침
+1. 이미지에 보이는 **모든 텍스트를 정확히 읽어서** 각 항목에 반영하세요
+2. 가격은 할인가/원가 모두 이미지에서 직접 읽어주세요
+3. 셀링포인트는 이미지에서 강조된 문구를 **그대로 인용**하세요
+4. 각 섹션의 실제 내용(헤드라인, 본문 텍스트)을 **구체적으로** 적어주세요
+5. structure의 각 섹션마다 실제 텍스트 내용을 description에 포함하세요
+6. 최소 5개 이상의 섹션을 분석하세요
+
+**반드시 아래 JSON 형식으로만** 응답하세요 (설명 텍스트 없이 JSON만):
 
 {
   "product": {
-    "name": "제품명",
-    "price": "가격",
-    "originalPrice": "원래 가격 (할인 전)",
+    "name": "이미지에서 읽은 정확한 제품명",
+    "price": "할인가 (이미지에서 읽은 그대로)",
+    "originalPrice": "원래 가격 (이미지에서 읽은 그대로, 없으면 null)",
+    "discountRate": "할인율 (예: 30%, 없으면 null)",
     "category": "카테고리",
-    "brand": "브랜드명"
+    "brand": "브랜드명",
+    "options": "옵션/사이즈/색상 등 (이미지에서 확인된 것)"
   },
   "design": {
-    "tone": "전체적인 디자인 톤 (예: 미니멀, 고급스러운, 귀여운 등)",
-    "mainColors": ["#hex1", "#hex2", "#hex3"],
+    "tone": "전체적인 디자인 톤 2-3문장으로 상세히",
+    "mainColors": ["#hex1", "#hex2", "#hex3", "#hex4"],
     "backgroundColor": "#배경색",
-    "fontStyle": "폰트 스타일 설명",
-    "imageStyle": "이미지 스타일 (제품컷, 라이프스타일, 일러스트 등)"
+    "fontStyle": "제목 폰트, 본문 폰트 스타일 각각 설명",
+    "imageStyle": "이미지 스타일 상세 설명 (구도, 배경, 모델 유무 등)",
+    "overallQuality": "디자인 완성도 평가 2-3문장"
   },
   "structure": [
     {
-      "section": "섹션명 (예: 히어로 배너, 특징 나열, 비교표 등)",
-      "description": "해당 섹션에 어떤 내용이 들어가 있는지",
-      "layout": "레이아웃 설명 (가로 배치, 세로 나열 등)"
+      "section": "섹션명",
+      "description": "이 섹션에 실제로 적혀있는 텍스트 내용을 구체적으로 서술",
+      "layout": "레이아웃 설명",
+      "visualElements": "사용된 시각 요소 (아이콘, 일러스트, 사진 등)"
     }
   ],
   "copywriting": {
-    "headlineStyle": "헤드라인 스타일 (질문형, 숫자 강조 등)",
-    "toneOfVoice": "어조 (친근한, 전문적인, 유머러스 등)",
-    "keyPhrases": ["핵심 문구1", "핵심 문구2"],
-    "sellingPoints": ["셀링 포인트1", "셀링 포인트2", "셀링 포인트3"]
+    "headlineStyle": "헤드라인 스타일 분석",
+    "headlines": ["이미지에서 읽은 실제 헤드라인 문구1", "문구2", "문구3"],
+    "toneOfVoice": "어조 상세 분석",
+    "keyPhrases": ["이미지에서 강조된 실제 핵심 문구를 그대로 5개 이상"],
+    "sellingPoints": ["실제 셀링 포인트 문구를 그대로 5개 이상"],
+    "callToAction": "CTA 문구 (구매하기, 지금 펀딩 등)"
   },
   "target": {
-    "audience": "타겟 고객층",
-    "painPoints": ["해결하는 고객 고민1", "고민2"],
-    "benefits": ["핵심 혜택1", "혜택2"]
+    "audience": "타겟 고객층 상세 분석",
+    "ageRange": "추정 연령대",
+    "painPoints": ["해결하는 고객 고민 3개 이상"],
+    "benefits": ["핵심 혜택 3개 이상"],
+    "useCases": ["사용 시나리오 2-3개"]
+  },
+  "socialProof": {
+    "reviews": "후기/리뷰 관련 정보 (개수, 평점 등)",
+    "salesCount": "판매량/펀딩금액 등",
+    "certifications": "인증/수상/미디어 노출 등",
+    "trustElements": ["신뢰를 주는 요소들"]
   },
   "overall": {
-    "strengths": ["이 상세페이지의 장점1", "장점2"],
-    "weaknesses": ["개선할 점1", "개선할 점2"],
+    "strengths": ["이 상세페이지의 구체적 장점 3개 이상"],
+    "weaknesses": ["구체적 개선점 3개 이상"],
     "score": 85,
-    "summary": "전체 상세페이지에 대한 종합 평가 2-3줄"
+    "summary": "전체 상세페이지에 대한 종합 평가 3-5줄로 상세히",
+    "improvementSuggestions": ["구체적인 개선 제안 3개 이상"]
   }
 }`;
 

@@ -10,419 +10,292 @@
       font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: #0f1117;
       color: #e1e4e8;
-      min-height: 100vh;
+      height: 100vh;
+      overflow: hidden;
     }
 
-    /* 헤더 */
     .header {
       background: linear-gradient(135deg, #1a1d27 0%, #252830 100%);
       border-bottom: 1px solid #2d3140;
-      padding: 16px 32px;
+      padding: 12px 24px;
       display: flex;
       align-items: center;
       gap: 12px;
+      height: 56px;
     }
-    .header h1 { font-size: 20px; font-weight: 700; color: #fff; }
-    .header .badge {
-      background: #3b82f6;
-      color: #fff;
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-weight: 600;
-    }
-    .header-right { margin-left: auto; display: flex; gap: 8px; }
+    .header h1 { font-size: 18px; font-weight: 700; color: #fff; }
+    .header .badge { background: #3b82f6; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+    .header-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
-    /* URL 입력 영역 */
-    .url-section {
-      max-width: 900px;
-      margin: 32px auto;
-      padding: 0 24px;
-    }
-    .url-input-wrapper {
+    /* URL 입력 - 헤더 내 */
+    .url-bar {
       display: flex;
-      gap: 12px;
-      background: #1a1d27;
+      gap: 8px;
+      background: #0f1117;
       border: 1px solid #2d3140;
-      border-radius: 12px;
-      padding: 8px;
+      border-radius: 8px;
+      padding: 4px;
+      flex: 1;
+      max-width: 600px;
+      margin: 0 20px;
     }
-    .url-input-wrapper input {
+    .url-bar input {
       flex: 1;
       background: transparent;
       border: none;
       color: #fff;
-      font-size: 15px;
-      padding: 12px 16px;
+      font-size: 13px;
+      padding: 6px 12px;
       outline: none;
     }
-    .url-input-wrapper input::placeholder { color: #555; }
-
-    /* 버튼 공통 */
+    .url-bar input::placeholder { color: #555; }
     .btn-analyze {
-      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      background: #3b82f6;
       color: #fff;
       border: none;
-      padding: 12px 28px;
-      border-radius: 8px;
-      font-size: 15px;
+      padding: 6px 16px;
+      border-radius: 6px;
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
       white-space: nowrap;
-      transition: all 0.2s;
     }
-    .btn-analyze:hover { background: linear-gradient(135deg, #2563eb, #1d4ed8); transform: translateY(-1px); }
-    .btn-analyze:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-    .btn-generate {
-      background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-      color: #fff;
-      border: none;
-      padding: 14px 32px;
-      border-radius: 10px;
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .btn-generate:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(139,92,246,0.3); }
-    .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
-    .btn-download {
-      background: linear-gradient(135deg, #10b981, #059669);
-      color: #fff;
-      border: none;
-      padding: 12px 28px;
-      border-radius: 8px;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      margin-top: 16px;
-      transition: all 0.2s;
-    }
-    .btn-download:hover { transform: translateY(-1px); }
-    .btn-secondary {
-      background: #252830;
-      border: 1px solid #2d3140;
-      color: #e1e4e8;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 14px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .btn-secondary:hover { border-color: #3b82f6; }
-    .btn-sm {
-      padding: 6px 14px;
-      font-size: 12px;
-      border-radius: 6px;
-    }
+    .btn-analyze:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    /* 진행 상태 */
-    .progress-section {
-      max-width: 900px;
-      margin: 20px auto;
-      padding: 0 24px;
-      display: none;
-    }
-    .progress-bar-bg {
+    /* 진행 바 */
+    .progress-bar-container {
+      height: 3px;
       background: #1a1d27;
-      border-radius: 8px;
-      overflow: hidden;
-      height: 6px;
+      display: none;
     }
     .progress-bar-fill {
       height: 100%;
       background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-      border-radius: 8px;
       transition: width 0.5s;
       width: 0%;
     }
-    .progress-text {
-      margin-top: 8px;
-      font-size: 13px;
-      color: #888;
-      text-align: center;
+
+    /* 메인 레이아웃 - 좌우 분할 */
+    .main-layout {
+      display: flex;
+      height: calc(100vh - 59px);
     }
 
-    /* 메인 컨텐츠 */
-    .main-content {
-      max-width: 1400px;
-      margin: 24px auto;
-      padding: 0 24px;
-      display: none;
+    /* 왼쪽: 원본 스크린샷 */
+    .left-panel {
+      width: 45%;
+      min-width: 350px;
+      border-right: 1px solid #2d3140;
+      display: flex;
+      flex-direction: column;
+      background: #13151b;
+    }
+    .panel-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid #2d3140;
+      font-size: 13px;
+      font-weight: 600;
+      color: #888;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .panel-header .platform-badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .platform-badge.coupang { background: #7b2d26; color: #ff6b6b; }
+    .platform-badge.naver { background: #1a4d2e; color: #4ade80; }
+    .platform-badge.wadiz { background: #2d2766; color: #a78bfa; }
+    .platform-badge.musinsa { background: #1a1a2e; color: #818cf8; }
+    .platform-badge.other { background: #333; color: #999; }
+
+    .screenshot-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+    .screenshot-scroll img {
+      width: 100%;
+      display: block;
+    }
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #444;
+      font-size: 14px;
+      gap: 12px;
+    }
+    .empty-state .icon { font-size: 48px; opacity: 0.3; }
+
+    /* 오른쪽: 분석/생성/미리보기 */
+    .right-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 400px;
     }
 
     /* 탭 */
     .tabs {
       display: flex;
-      gap: 4px;
-      margin-bottom: 20px;
       border-bottom: 1px solid #2d3140;
+      flex-shrink: 0;
     }
     .tab {
       padding: 10px 20px;
       background: transparent;
       border: none;
-      color: #888;
-      font-size: 14px;
+      color: #666;
+      font-size: 13px;
       font-weight: 500;
       cursor: pointer;
       border-bottom: 2px solid transparent;
-      transition: all 0.2s;
     }
     .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
-    .tab:hover { color: #ccc; }
-    .tab-panel { display: none; }
+    .tab:hover { color: #aaa; }
+    .tab-content { flex: 1; overflow-y: auto; }
+    .tab-panel { display: none; padding: 16px; }
     .tab-panel.active { display: block; }
 
-    /* 분석 결과 패널 */
-    .analysis-grid {
-      display: grid;
-      grid-template-columns: 350px 1fr;
-      gap: 24px;
-    }
-    .screenshot-preview {
-      background: #1a1d27;
-      border: 1px solid #2d3140;
-      border-radius: 12px;
-      padding: 16px;
-      max-height: 80vh;
-      overflow-y: auto;
-    }
-    .screenshot-preview img {
-      width: 100%;
-      border-radius: 8px;
-      margin-bottom: 8px;
-    }
-    .screenshot-preview h3 {
-      font-size: 14px;
-      color: #888;
-      margin-bottom: 12px;
-    }
-    .analysis-result {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    /* 카드 */
+    /* 분석 결과 카드 */
     .card {
       background: #1a1d27;
       border: 1px solid #2d3140;
-      border-radius: 12px;
-      padding: 20px;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 12px;
     }
-    .card h3 {
-      font-size: 15px;
+    .card-title {
+      font-size: 14px;
       font-weight: 600;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
       display: flex;
       align-items: center;
       gap: 8px;
+      color: #fff;
     }
-    .card h3 .icon {
-      width: 28px;
-      height: 28px;
+    .card-icon {
+      width: 24px;
+      height: 24px;
       border-radius: 6px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
+      font-size: 12px;
+      font-weight: 700;
     }
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px 0;
-      border-bottom: 1px solid #1f2233;
-      font-size: 14px;
-    }
-    .info-row:last-child { border-bottom: none; }
-    .info-label { color: #888; }
-    .info-value { color: #e1e4e8; font-weight: 500; max-width: 60%; text-align: right; }
+    .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1f2233; font-size: 13px; }
+    .row:last-child { border-bottom: none; }
+    .row-label { color: #666; }
+    .row-value { color: #e1e4e8; font-weight: 500; max-width: 65%; text-align: right; word-break: keep-all; }
 
-    .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-    .tag {
+    .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+    .tag { background: #252830; border: 1px solid #2d3140; color: #a0a4b0; padding: 3px 8px; border-radius: 5px; font-size: 11px; }
+    .tag.blue { background: #1e3a5f; border-color: #3b82f6; color: #7cb3f4; }
+    .tag.green { background: #1a3d2e; border-color: #10b981; color: #6ee7b7; }
+    .tag.yellow { background: #3d351a; border-color: #f59e0b; color: #fcd34d; }
+
+    .colors { display: flex; gap: 6px; margin-top: 6px; }
+    .color-dot { width: 28px; height: 28px; border-radius: 6px; border: 2px solid #2d3140; }
+
+    .section-list { display: flex; flex-direction: column; gap: 6px; }
+    .section-item {
+      padding: 8px 12px;
       background: #252830;
-      border: 1px solid #2d3140;
-      color: #a0a4b0;
-      padding: 4px 10px;
       border-radius: 6px;
+      border-left: 3px solid #3b82f6;
       font-size: 12px;
     }
-    .tag.highlight { background: #1e3a5f; border-color: #3b82f6; color: #7cb3f4; }
+    .section-item .sec-name { font-weight: 600; font-size: 13px; margin-bottom: 3px; color: #e1e4e8; }
+    .section-item .sec-desc { color: #888; line-height: 1.5; }
+    .section-item .sec-visual { color: #666; font-size: 11px; margin-top: 3px; font-style: italic; }
 
-    .color-swatches { display: flex; gap: 8px; margin-top: 8px; }
-    .swatch {
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
-      border: 2px solid #2d3140;
-      position: relative;
-    }
-    .swatch span {
-      position: absolute;
-      bottom: -18px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 10px;
-      color: #666;
-      white-space: nowrap;
-    }
-
-    .structure-list { list-style: none; }
-    .structure-item {
-      padding: 10px 14px;
-      background: #252830;
-      border-radius: 8px;
-      margin-bottom: 8px;
-      border-left: 3px solid #3b82f6;
-    }
-    .structure-item .name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
-    .structure-item .desc { font-size: 12px; color: #888; }
-
-    .score-circle {
-      width: 80px;
-      height: 80px;
-      border-radius: 50%;
-      display: flex;
+    .score-badge {
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: 28px;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      font-size: 22px;
       font-weight: 700;
-      margin: 0 auto 12px;
+      float: right;
+      margin: 0 0 8px 12px;
     }
 
-    /* 생성 패널 */
-    .generate-section { display: flex; flex-direction: column; gap: 16px; }
-    .edit-area {
-      background: #1a1d27;
-      border: 1px solid #2d3140;
-      border-radius: 12px;
-      padding: 20px;
+    .suggestion-item {
+      padding: 8px 12px;
+      background: #252830;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 6px;
+      border-left: 3px solid #f59e0b;
+      color: #ccc;
+      line-height: 1.5;
     }
-    .edit-area label { font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px; }
-    .edit-area textarea {
+
+    /* 생성 탭 */
+    .gen-textarea {
       width: 100%;
-      min-height: 100px;
+      min-height: 80px;
       background: #252830;
       border: 1px solid #2d3140;
       border-radius: 8px;
       color: #e1e4e8;
       padding: 12px;
-      font-size: 14px;
+      font-size: 13px;
       resize: vertical;
       outline: none;
+      margin-bottom: 12px;
     }
-    .edit-area textarea:focus { border-color: #3b82f6; }
+    .gen-textarea:focus { border-color: #3b82f6; }
 
-    /* 미리보기 패널 */
-    .preview-panel {
-      background: #1a1d27;
-      border: 1px solid #2d3140;
-      border-radius: 12px;
-      overflow: hidden;
-    }
-    .preview-panel-header {
-      padding: 12px 16px;
-      border-bottom: 1px solid #2d3140;
-      font-size: 14px;
-      font-weight: 600;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .preview-iframe-wrap {
-      padding: 16px;
+    .btn { border: none; padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-purple { background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: #fff; }
+    .btn-green { background: linear-gradient(135deg, #10b981, #059669); color: #fff; }
+    .btn-gray { background: #252830; border: 1px solid #2d3140; color: #e1e4e8; }
+    .btn-sm { padding: 6px 14px; font-size: 12px; }
+
+    /* 미리보기 탭 */
+    .preview-wrap {
       background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
       display: flex;
       justify-content: center;
     }
-    .preview-iframe-wrap iframe {
-      width: 860px;
-      height: 800px;
-      border: none;
-    }
+    .preview-wrap iframe { width: 860px; min-height: 600px; border: none; }
 
-    /* JPG 결과 */
     .jpg-result {
       background: #1a1d27;
       border: 1px solid #2d3140;
-      border-radius: 12px;
-      padding: 24px;
-      text-align: center;
-    }
-    .jpg-result img {
-      max-width: 100%;
-      max-height: 500px;
-      border-radius: 8px;
-      border: 1px solid #2d3140;
-      object-fit: contain;
-    }
-    .jpg-info { margin-top: 12px; font-size: 13px; color: #888; }
-
-    .actions { display: flex; gap: 10px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
-
-    /* 히스토리 */
-    .history-dropdown {
-      position: relative;
-      display: inline-block;
-    }
-    .history-list {
-      display: none;
-      position: absolute;
-      top: 100%;
-      right: 0;
-      background: #1a1d27;
-      border: 1px solid #2d3140;
-      border-radius: 8px;
-      min-width: 320px;
-      max-height: 400px;
-      overflow-y: auto;
-      z-index: 50;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-    }
-    .history-list.show { display: block; }
-    .history-item {
-      padding: 12px 16px;
-      border-bottom: 1px solid #1f2233;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    .history-item:hover { background: #252830; }
-    .history-item:last-child { border-bottom: none; }
-    .history-item .name { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
-    .history-item .meta { font-size: 11px; color: #666; }
-
-    /* 이미지 교체 */
-    .image-replace-area {
-      background: #1a1d27;
-      border: 1px solid #2d3140;
-      border-radius: 12px;
+      border-radius: 10px;
       padding: 20px;
+      text-align: center;
       margin-top: 16px;
     }
-    .image-replace-area h4 { font-size: 14px; margin-bottom: 12px; }
-    .placeholder-list { display: flex; flex-direction: column; gap: 8px; }
-    .placeholder-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 8px 12px;
-      background: #252830;
-      border-radius: 8px;
-    }
-    .placeholder-row span { font-size: 13px; flex: 1; }
-    .placeholder-row input[type="file"] { font-size: 12px; }
+    .jpg-result img { max-width: 100%; max-height: 400px; border-radius: 8px; object-fit: contain; }
+
+    .actions { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
 
     /* 토스트 */
     .toast {
       position: fixed;
-      bottom: 24px;
-      right: 24px;
+      bottom: 20px;
+      right: 20px;
       background: #252830;
       border: 1px solid #2d3140;
       border-radius: 8px;
-      padding: 12px 20px;
-      font-size: 14px;
+      padding: 10px 18px;
+      font-size: 13px;
       z-index: 200;
       opacity: 0;
       transform: translateY(20px);
@@ -432,158 +305,189 @@
     .toast.success { border-color: #10b981; color: #10b981; }
     .toast.error { border-color: #ef4444; color: #ef4444; }
 
-    /* 로딩 */
-    .spinner {
-      width: 20px;
-      height: 20px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      display: inline-block;
-      margin-right: 8px;
-      vertical-align: middle;
-    }
+    .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; margin-right: 6px; vertical-align: middle; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* 플랫폼 배지 */
-    .platform-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 12px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
+    /* 리사이저 */
+    .resizer {
+      width: 5px;
+      cursor: col-resize;
+      background: #2d3140;
+      flex-shrink: 0;
+      transition: background 0.15s;
     }
-    .platform-badge.coupang { background: #7b2d26; color: #ff6b6b; }
-    .platform-badge.naver { background: #1a4d2e; color: #4ade80; }
-    .platform-badge.wadiz { background: #2d2766; color: #a78bfa; }
-    .platform-badge.other { background: #333; color: #999; }
-    .platform-badge.musinsa { background: #1a1a2e; color: #818cf8; }
-    .platform-badge.ohouse { background: #2d3326; color: #84cc16; }
+    .resizer:hover, .resizer.active { background: #3b82f6; }
 
-    @media (max-width: 1000px) {
-      .analysis-grid { grid-template-columns: 1fr; }
+    /* 히스토리 드롭다운 */
+    .history-dropdown { position: relative; }
+    .history-list {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      background: #1a1d27;
+      border: 1px solid #2d3140;
+      border-radius: 8px;
+      min-width: 300px;
+      max-height: 350px;
+      overflow-y: auto;
+      z-index: 50;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
     }
+    .history-list.show { display: block; }
+    .history-item { padding: 10px 14px; border-bottom: 1px solid #1f2233; cursor: pointer; }
+    .history-item:hover { background: #252830; }
+    .history-item .name { font-size: 13px; font-weight: 500; }
+    .history-item .meta { font-size: 11px; color: #555; margin-top: 2px; }
+
+    /* 모달 */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      padding: 40px;
+    }
+    .modal-box {
+      max-width: 1000px;
+      margin: 0 auto;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: #1a1d27;
+      border-radius: 12px;
+      border: 1px solid #2d3140;
+    }
+    .modal-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #2d3140;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .modal-body { flex: 1; }
+    .modal-body textarea {
+      width: 100%;
+      height: 100%;
+      background: #252830;
+      border: none;
+      color: #e1e4e8;
+      padding: 16px;
+      font-family: monospace;
+      font-size: 13px;
+      resize: none;
+      outline: none;
+    }
+
+    .label { font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #aaa; }
   </style>
 </head>
 <body>
+  <!-- 헤더 -->
   <div class="header">
     <h1>상세페이지 분석기</h1>
     <span class="badge">Gemini Vision</span>
+    <div class="url-bar">
+      <input type="text" id="urlInput" placeholder="분석할 상세페이지 URL (쿠팡, 네이버, 와디즈, 자사몰 등)">
+      <button class="btn-analyze" id="btnAnalyze" onclick="startAnalysis()">분석</button>
+    </div>
     <div class="header-right">
       <div class="history-dropdown">
-        <button class="btn-secondary btn-sm" onclick="toggleHistory()">분석 히스토리</button>
+        <button class="btn-gray btn-sm" onclick="toggleHistory()">히스토리</button>
         <div class="history-list" id="historyList"></div>
       </div>
     </div>
   </div>
 
-  <!-- URL 입력 -->
-  <div class="url-section">
-    <div class="url-input-wrapper">
-      <input type="text" id="urlInput" placeholder="분석할 상세페이지 URL을 입력하세요 (쿠팡, 네이버, 와디즈, 자사몰 등)">
-      <button class="btn-analyze" id="btnAnalyze" onclick="startAnalysis()">분석 시작</button>
-    </div>
+  <!-- 진행 바 -->
+  <div class="progress-bar-container" id="progressBar">
+    <div class="progress-bar-fill" id="progressFill"></div>
   </div>
 
-  <!-- 진행 상태 -->
-  <div class="progress-section" id="progressSection">
-    <div class="progress-bar-bg">
-      <div class="progress-bar-fill" id="progressBar"></div>
-    </div>
-    <div class="progress-text" id="progressText">준비 중...</div>
-  </div>
-
-  <!-- 메인 컨텐츠 -->
-  <div class="main-content" id="mainContent">
-    <div class="tabs" id="tabBar">
-      <button class="tab active" data-tab="analysis" onclick="switchTab('analysis')">분석 결과</button>
-      <button class="tab" data-tab="generate" onclick="switchTab('generate')">상세페이지 생성</button>
-      <button class="tab" data-tab="preview" onclick="switchTab('preview')">미리보기 / 내보내기</button>
-    </div>
-
-    <!-- 탭 1: 분석 결과 -->
-    <div class="tab-panel active" id="tab-analysis">
-      <div class="analysis-grid">
-        <div class="screenshot-preview" id="screenshotPreview">
-          <h3>원본 스크린샷</h3>
-        </div>
-        <div class="analysis-result" id="analysisResult"></div>
+  <!-- 좌우 분할 레이아웃 -->
+  <div class="main-layout">
+    <!-- 왼쪽: 원본 스크린샷 -->
+    <div class="left-panel" id="leftPanel">
+      <div class="panel-header">
+        <span>원본 페이지</span>
+        <span class="platform-badge" id="platformBadge" style="display:none"></span>
+        <span id="progressText" style="margin-left:auto; font-size:12px; color:#555;"></span>
       </div>
-    </div>
-
-    <!-- 탭 2: 생성 -->
-    <div class="tab-panel" id="tab-generate">
-      <div class="generate-section">
-        <div class="edit-area">
-          <label>수정 / 추가 요청 (선택사항)</label>
-          <textarea id="editInstructions" placeholder="예: 색상을 더 밝게 해줘 / 후기 섹션을 추가해줘 / 가격을 49,000원으로 변경해줘"></textarea>
-        </div>
-        <div style="text-align: center;">
-          <button class="btn-generate" id="btnGenerate" onclick="generatePage()">상세페이지 생성하기</button>
+      <div class="screenshot-scroll" id="screenshotArea">
+        <div class="empty-state">
+          <div class="icon">&#128269;</div>
+          <div>URL을 입력하고 분석을 시작하세요</div>
         </div>
       </div>
     </div>
 
-    <!-- 탭 3: 미리보기 -->
-    <div class="tab-panel" id="tab-preview">
-      <div class="preview-panel">
-        <div class="preview-panel-header">
-          <span>생성된 상세페이지 미리보기 (860px)</span>
-          <div style="display:flex; gap:8px;">
-            <button class="btn-secondary btn-sm" onclick="switchTab('generate')">다시 생성</button>
-            <button class="btn-secondary btn-sm" onclick="editHtml()">HTML 편집</button>
-            <button class="btn-secondary btn-sm" onclick="exportAnalysisJson()">분석 JSON 저장</button>
+    <!-- 리사이저 -->
+    <div class="resizer" id="resizer"></div>
+
+    <!-- 오른쪽: 분석/생성/미리보기 -->
+    <div class="right-panel" id="rightPanel">
+      <div class="tabs" id="tabBar">
+        <button class="tab active" data-tab="analysis" onclick="switchTab('analysis')">분석 결과</button>
+        <button class="tab" data-tab="generate" onclick="switchTab('generate')">생성</button>
+        <button class="tab" data-tab="preview" onclick="switchTab('preview')">미리보기</button>
+      </div>
+      <div class="tab-content">
+        <!-- 분석 탭 -->
+        <div class="tab-panel active" id="tab-analysis">
+          <div id="analysisContent">
+            <div class="empty-state" style="min-height:300px;">
+              <div class="icon">&#128202;</div>
+              <div>분석 결과가 여기에 표시됩니다</div>
+            </div>
           </div>
         </div>
-        <div class="preview-iframe-wrap">
-          <iframe id="previewFrame"></iframe>
+        <!-- 생성 탭 -->
+        <div class="tab-panel" id="tab-generate">
+          <div class="label">수정/추가 요청 (선택)</div>
+          <textarea class="gen-textarea" id="editInstructions" placeholder="예: 색상을 더 밝게 / 후기 섹션 추가 / 가격 49,000원으로 변경"></textarea>
+          <button class="btn btn-purple" id="btnGenerate" onclick="generatePage()">상세페이지 생성하기</button>
         </div>
-      </div>
-
-      <!-- 이미지 플레이스홀더 교체 -->
-      <div class="image-replace-area" id="imageReplaceArea" style="display:none;">
-        <h4>이미지 플레이스홀더 교체</h4>
-        <div class="placeholder-list" id="placeholderList"></div>
-        <div style="margin-top:12px; text-align:right;">
-          <button class="btn-secondary btn-sm" onclick="applyImageReplacements()">이미지 적용</button>
-        </div>
-      </div>
-
-      <div class="actions" style="margin-top:24px;">
-        <button class="btn-generate" id="btnExportJpg" onclick="exportJpg(this)">JPG로 내보내기</button>
-      </div>
-
-      <div class="jpg-result" id="jpgResult" style="display:none; margin-top:24px;">
-        <h3 style="margin-bottom:16px;">JPG 생성 완료</h3>
-        <img id="jpgPreview" src="" alt="생성된 JPG">
-        <div class="jpg-info" id="jpgInfo"></div>
-        <div class="actions">
-          <a id="jpgDownloadLink" href="" download>
-            <button class="btn-download">JPG 다운로드</button>
-          </a>
+        <!-- 미리보기 탭 -->
+        <div class="tab-panel" id="tab-preview">
+          <div style="display:flex; gap:8px; margin-bottom:12px;">
+            <button class="btn btn-gray btn-sm" onclick="switchTab('generate')">다시 생성</button>
+            <button class="btn btn-gray btn-sm" onclick="editHtml()">HTML 편집</button>
+            <button class="btn btn-gray btn-sm" onclick="exportAnalysisJson()">JSON 저장</button>
+            <button class="btn btn-green btn-sm" id="btnExportJpg" onclick="exportJpg(this)" style="margin-left:auto;">JPG 내보내기</button>
+          </div>
+          <div class="preview-wrap">
+            <iframe id="previewFrame"></iframe>
+          </div>
+          <div class="jpg-result" id="jpgResult" style="display:none;">
+            <h4 style="margin-bottom:12px;">JPG 생성 완료</h4>
+            <img id="jpgPreview" src="">
+            <div style="margin-top:8px; font-size:12px; color:#666;" id="jpgInfo"></div>
+            <div class="actions">
+              <a id="jpgDownloadLink" href="" download><button class="btn btn-green btn-sm">다운로드</button></a>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
   <!-- HTML 편집 모달 -->
-  <div id="htmlEditorModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:100; padding:40px;">
-    <div style="max-width:1000px; margin:0 auto; height:100%; display:flex; flex-direction:column; background:#1a1d27; border-radius:12px; border:1px solid #2d3140;">
-      <div style="padding:16px 20px; border-bottom:1px solid #2d3140; display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:600;">HTML 직접 편집</span>
-        <div style="display:flex; gap:8px;">
-          <button class="btn-secondary btn-sm" onclick="applyHtmlEdit()">적용</button>
-          <button class="btn-secondary btn-sm" onclick="closeHtmlEditor()">닫기</button>
+  <div class="modal-overlay" id="htmlModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span>HTML 편집</span>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-gray btn-sm" onclick="applyHtmlEdit()">적용</button>
+          <button class="btn btn-gray btn-sm" onclick="closeHtmlEditor()">닫기</button>
         </div>
       </div>
-      <textarea id="htmlEditor" style="flex:1; background:#252830; border:none; color:#e1e4e8; padding:20px; font-family:monospace; font-size:13px; resize:none; outline:none;"></textarea>
+      <div class="modal-body"><textarea id="htmlEditor"></textarea></div>
     </div>
   </div>
 
-  <!-- 토스트 -->
   <div class="toast" id="toast"></div>
 
   <script>
@@ -593,63 +497,230 @@
     let currentOutputId = null;
 
     // ============================================================
+    // 패널 리사이저
+    // ============================================================
+    const resizer = document.getElementById('resizer');
+    const leftPanel = document.getElementById('leftPanel');
+    let isResizing = false;
+    resizer.addEventListener('mousedown', () => { isResizing = true; resizer.classList.add('active'); });
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      const w = Math.max(280, Math.min(e.clientX, window.innerWidth - 400));
+      leftPanel.style.width = w + 'px';
+    });
+    document.addEventListener('mouseup', () => { isResizing = false; resizer.classList.remove('active'); });
+
+    // ============================================================
     // 분석 시작
     // ============================================================
     async function startAnalysis() {
       const url = document.getElementById('urlInput').value.trim();
       if (!url) return showToast('URL을 입력해주세요', 'error');
-
-      try { new URL(url); } catch { return showToast('올바른 URL 형식이 아닙니다', 'error'); }
+      try { new URL(url); } catch { return showToast('올바른 URL이 아닙니다', 'error'); }
 
       const btn = document.getElementById('btnAnalyze');
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span>분석 중...';
-
-      showProgress(true);
-      updateProgress(10, '페이지 접속 및 크롤링 중...');
+      btn.innerHTML = '<span class="spinner"></span>';
+      setProgress(true, 15, '크롤링 중...');
 
       try {
-        // 1단계: 크롤링
         const crawlRes = await fetch('/api/crawl', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url })
         });
-        const crawlData = await crawlRes.json();
-        if (!crawlData.success) throw new Error(crawlData.error);
+        const crawl = await crawlRes.json();
+        if (!crawl.success) throw new Error(crawl.error);
 
-        currentSessionId = crawlData.sessionId;
-        updateProgress(40, 'AI 분석 중... (Gemini Vision)');
+        currentSessionId = crawl.sessionId;
+        renderScreenshot(crawl);
+        setProgress(true, 50, 'AI 분석 중...');
 
-        // 2단계: AI 분석
         const analyzeRes = await fetch('/api/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: crawlData.sessionId,
-            pageData: { ...crawlData.pageData, url }
-          })
+          body: JSON.stringify({ sessionId: crawl.sessionId, pageData: { ...crawl.pageData, url } })
         });
-        const analyzeData = await analyzeRes.json();
-        if (!analyzeData.success) throw new Error(analyzeData.error);
+        const analyze = await analyzeRes.json();
+        if (!analyze.success) throw new Error(analyze.error);
 
-        currentAnalysis = analyzeData.analysis;
-        updateProgress(100, '분석 완료!');
-
-        renderScreenshots(crawlData);
-        renderAnalysis(analyzeData.analysis, crawlData);
-        document.getElementById('mainContent').style.display = 'block';
+        currentAnalysis = analyze.analysis;
+        renderAnalysis(analyze.analysis);
         switchTab('analysis');
-
-        setTimeout(() => showProgress(false), 1000);
-        showToast('분석 완료!', 'success');
+        setProgress(true, 100, '완료');
+        setTimeout(() => setProgress(false), 800);
+        showToast('분석 완료', 'success');
       } catch (err) {
-        showToast('분석 오류: ' + err.message, 'error');
-        showProgress(false);
+        showToast(err.message, 'error');
+        setProgress(false);
       } finally {
         btn.disabled = false;
-        btn.textContent = '분석 시작';
+        btn.textContent = '분석';
       }
+    }
+
+    // ============================================================
+    // 원본 스크린샷 표시 (풀페이지 1장)
+    // ============================================================
+    function renderScreenshot(crawl) {
+      const area = document.getElementById('screenshotArea');
+      // full_page.jpg 사용 (엑박 방지)
+      area.innerHTML = `<img src="/screenshots/${crawl.sessionId}/full_page.jpg" alt="원본 페이지" onerror="this.onerror=null; this.src='/screenshots/${crawl.sessionId}/screenshot_0.jpg';">`;
+
+      const badge = document.getElementById('platformBadge');
+      const names = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', ohouse:'오늘의집', other:'기타' };
+      badge.textContent = names[crawl.platform] || crawl.platform;
+      badge.className = 'platform-badge ' + crawl.platform;
+      badge.style.display = 'inline-flex';
+    }
+
+    // ============================================================
+    // 분석 결과 렌더링
+    // ============================================================
+    function renderAnalysis(a) {
+      const el = document.getElementById('analysisContent');
+      let h = '';
+
+      // 제품 정보
+      if (a.product) {
+        const p = a.product;
+        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#1e3a5f;color:#3b82f6;">P</span>제품 정보</div>
+          ${row('제품명', p.name)}${row('가격', p.price)}${row('원가', p.originalPrice)}${row('할인율', p.discountRate)}
+          ${row('카테고리', p.category)}${row('브랜드', p.brand)}${row('옵션', p.options)}
+        </div>`;
+      }
+
+      // 디자인
+      if (a.design) {
+        const d = a.design;
+        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#2d1f4e;color:#8b5cf6;">D</span>디자인 분석</div>
+          ${row('톤', d.tone)}${row('폰트', d.fontStyle)}${row('이미지 스타일', d.imageStyle)}${row('완성도', d.overallQuality)}
+          <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">컬러</span>
+            <div class="colors">${(d.mainColors||[]).map(c=>`<div class="color-dot" style="background:${esc(c)}" title="${esc(c)}"></div>`).join('')}</div>
+          </div>
+        </div>`;
+      }
+
+      // 페이지 구조
+      if (a.structure && a.structure.length) {
+        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#1a3d2e;color:#10b981;">S</span>페이지 구조 (${a.structure.length}개 섹션)</div>
+          <div class="section-list">${a.structure.map((s,i) => `
+            <div class="section-item">
+              <div class="sec-name">${i+1}. ${esc(s.section)}</div>
+              <div class="sec-desc">${esc(s.description)}</div>
+              ${s.visualElements ? `<div class="sec-visual">${esc(s.visualElements)}</div>` : ''}
+            </div>`).join('')}
+          </div>
+        </div>`;
+      }
+
+      // 카피라이팅
+      if (a.copywriting) {
+        const c = a.copywriting;
+        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#3d2e1a;color:#f59e0b;">C</span>카피라이팅</div>
+          ${row('헤드라인 스타일', c.headlineStyle)}${row('어조', c.toneOfVoice)}${row('CTA', c.callToAction)}
+          ${c.headlines && c.headlines.length ? `<div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">실제 헤드라인</span><div class="tags">${c.headlines.map(t=>`<span class="tag yellow">${esc(t)}</span>`).join('')}</div></div>` : ''}
+          <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">핵심 문구</span><div class="tags">${(c.keyPhrases||[]).map(t=>`<span class="tag blue">${esc(t)}</span>`).join('')}</div></div>
+          <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">셀링 포인트</span><div class="tags">${(c.sellingPoints||[]).map(t=>`<span class="tag green">${esc(t)}</span>`).join('')}</div></div>
+        </div>`;
+      }
+
+      // 타겟
+      if (a.target) {
+        const t = a.target;
+        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#1a2d3d;color:#06b6d4;">T</span>타겟 분석</div>
+          ${row('타겟', t.audience)}${row('연령대', t.ageRange)}
+          <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">고민</span><div class="tags">${(t.painPoints||[]).map(p=>`<span class="tag">${esc(p)}</span>`).join('')}</div></div>
+          <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">혜택</span><div class="tags">${(t.benefits||[]).map(p=>`<span class="tag blue">${esc(p)}</span>`).join('')}</div></div>
+          ${t.useCases ? `<div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">사용 시나리오</span><div class="tags">${(t.useCases||[]).map(p=>`<span class="tag green">${esc(p)}</span>`).join('')}</div></div>` : ''}
+        </div>`;
+      }
+
+      // 소셜 프루프
+      if (a.socialProof) {
+        const sp = a.socialProof;
+        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#2d2d1a;color:#eab308;">!</span>신뢰 요소</div>
+          ${row('리뷰/후기', sp.reviews)}${row('판매/펀딩', sp.salesCount)}${row('인증/수상', sp.certifications)}
+          ${sp.trustElements ? `<div style="margin-top:8px;"><div class="tags">${(sp.trustElements||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div>` : ''}
+        </div>`;
+      }
+
+      // 종합 평가
+      if (a.overall) {
+        const o = a.overall;
+        const score = o.score || 0;
+        const sc = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
+        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#1f1a3d;color:#a78bfa;">R</span>종합 평가</div>
+          <div class="score-badge" style="border:3px solid ${sc}; color:${sc};">${score}</div>
+          <p style="font-size:13px; color:#aaa; line-height:1.6; margin-bottom:10px;">${esc(o.summary)}</p>
+          <div style="clear:both;"></div>
+          <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">장점</span><div class="tags">${(o.strengths||[]).map(s=>`<span class="tag green">${esc(s)}</span>`).join('')}</div></div>
+          <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">개선점</span><div class="tags">${(o.weaknesses||[]).map(s=>`<span class="tag">${esc(s)}</span>`).join('')}</div></div>
+          ${o.improvementSuggestions ? `<div style="margin-top:10px;"><span class="row-label" style="font-size:12px;">개선 제안</span>${(o.improvementSuggestions||[]).map(s=>`<div class="suggestion-item">${esc(s)}</div>`).join('')}</div>` : ''}
+        </div>`;
+      }
+
+      el.innerHTML = h;
+    }
+
+    function row(label, value) {
+      if (!value || value === 'null' || value === 'undefined') return '';
+      return `<div class="row"><span class="row-label">${esc(label)}</span><span class="row-value">${esc(String(value))}</span></div>`;
+    }
+
+    // ============================================================
+    // 생성
+    // ============================================================
+    async function generatePage() {
+      if (!currentAnalysis) return showToast('먼저 분석하세요', 'error');
+      const btn = document.getElementById('btnGenerate');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>생성 중...';
+      try {
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ analysis: currentAnalysis, userEdits: document.getElementById('editInstructions').value.trim() || null })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        currentHtml = data.html;
+        currentOutputId = data.outputId;
+        switchTab('preview');
+        updatePreview(data.html);
+        showToast('생성 완료', 'success');
+      } catch (err) { showToast(err.message, 'error'); }
+      finally { btn.disabled = false; btn.textContent = '상세페이지 생성하기'; }
+    }
+
+    function updatePreview(html) {
+      const iframe = document.getElementById('previewFrame');
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.open(); doc.write(html); doc.close();
+      setTimeout(() => { try { iframe.style.height = Math.min(doc.body.scrollHeight + 40, 3000) + 'px'; } catch(e){} }, 500);
+    }
+
+    // ============================================================
+    // JPG
+    // ============================================================
+    async function exportJpg(btn) {
+      if (!currentHtml) return showToast('먼저 생성하세요', 'error');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>변환 중...';
+      try {
+        const res = await fetch('/api/export-jpg', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ html: currentHtml, outputId: currentOutputId })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        const r = document.getElementById('jpgResult'); r.style.display = 'block';
+        document.getElementById('jpgPreview').src = data.filePath + '?t=' + Date.now();
+        document.getElementById('jpgInfo').textContent = `${data.dimensions} | ${data.fileSize}`;
+        const link = document.getElementById('jpgDownloadLink'); link.href = data.filePath; link.download = data.fileName;
+        showToast('JPG 완료', 'success');
+      } catch (err) { showToast(err.message, 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'JPG 내보내기'; }
     }
 
     // ============================================================
@@ -657,427 +728,64 @@
     // ============================================================
     async function toggleHistory() {
       const list = document.getElementById('historyList');
-      if (list.classList.contains('show')) {
-        list.classList.remove('show');
-        return;
-      }
-
-      const res = await fetch('/api/history');
-      const data = await res.json();
-
-      if (!data.history || data.history.length === 0) {
-        list.innerHTML = '<div style="padding:16px; color:#666; text-align:center;">히스토리가 없습니다</div>';
-      } else {
-        const platformNames = { coupang: '쿠팡', naver: '네이버', wadiz: '와디즈', other: '기타', musinsa: '무신사', ohouse: '오늘의집' };
-        list.innerHTML = data.history.map(h => `
-          <div class="history-item" onclick="loadHistory('${h.sessionId}')">
-            <div class="name">${h.productName || '(이름 없음)'}</div>
-            <div class="meta">${platformNames[h.platform] || h.platform || ''} | ${new Date(h.createdAt).toLocaleString('ko-KR')}</div>
-          </div>
-        `).join('');
-      }
+      if (list.classList.contains('show')) { list.classList.remove('show'); return; }
+      const res = await fetch('/api/history'); const data = await res.json();
+      const names = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', other:'기타' };
+      list.innerHTML = (!data.history?.length) ? '<div style="padding:14px;color:#555;text-align:center;">없음</div>'
+        : data.history.map(h => `<div class="history-item" onclick="loadHistory('${h.sessionId}')">
+            <div class="name">${h.productName||'(이름없음)'}</div>
+            <div class="meta">${names[h.platform]||h.platform||''} | ${new Date(h.createdAt).toLocaleString('ko-KR')}</div>
+          </div>`).join('');
       list.classList.add('show');
     }
-
-    async function loadHistory(sessionId) {
+    async function loadHistory(sid) {
       document.getElementById('historyList').classList.remove('show');
-      try {
-        const res = await fetch(`/api/history/${sessionId}`);
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error);
-
-        currentSessionId = data.sessionId;
-        currentAnalysis = data.analysis;
-
-        // 스크린샷이 남아있으면 표시
-        const container = document.getElementById('screenshotPreview');
-        container.innerHTML = `<h3>원본 스크린샷 (히스토리)</h3><p style="color:#666;font-size:13px;">이전 분석 결과를 불러왔습니다</p>`;
-
-        renderAnalysis(data.analysis, { platform: data.platform });
-        document.getElementById('mainContent').style.display = 'block';
-        switchTab('analysis');
-        showToast('히스토리를 불러왔습니다', 'success');
-      } catch (err) {
-        showToast('히스토리 로드 실패: ' + err.message, 'error');
-      }
+      const res = await fetch(`/api/history/${sid}`); const data = await res.json();
+      if (!data.success) return showToast(data.error, 'error');
+      currentSessionId = data.sessionId; currentAnalysis = data.analysis;
+      document.getElementById('screenshotArea').innerHTML = '<div class="empty-state" style="min-height:200px;"><div style="color:#555;">히스토리에서 불러옴</div></div>';
+      renderAnalysis(data.analysis); switchTab('analysis'); showToast('불러옴', 'success');
     }
-
-    // 외부 클릭 시 히스토리 닫기
-    document.addEventListener('click', (e) => {
-      if (!e.target.closest('.history-dropdown')) {
-        document.getElementById('historyList').classList.remove('show');
-      }
-    });
+    document.addEventListener('click', e => { if (!e.target.closest('.history-dropdown')) document.getElementById('historyList').classList.remove('show'); });
 
     // ============================================================
-    // 스크린샷 미리보기
+    // HTML 편집 / JSON / 유틸
     // ============================================================
-    function renderScreenshots(crawlData) {
-      const container = document.getElementById('screenshotPreview');
-      const platformNames = {
-        coupang: '쿠팡', naver: '네이버', wadiz: '와디즈', other: '자사몰/기타',
-        musinsa: '무신사', ohouse: '오늘의집', '11st': '11번가',
-        gmarket: 'G마켓', auction: '옥션', idus: '아이디어스'
-      };
-      const p = crawlData.platform;
+    function editHtml() { if (!currentHtml) return; document.getElementById('htmlEditor').value = currentHtml; document.getElementById('htmlModal').style.display = 'block'; }
+    function closeHtmlEditor() { document.getElementById('htmlModal').style.display = 'none'; }
+    function applyHtmlEdit() { currentHtml = document.getElementById('htmlEditor').value; updatePreview(currentHtml); closeHtmlEditor(); showToast('적용됨', 'success'); }
 
-      let html = '<h3>원본 스크린샷</h3>';
-      html += `<div class="platform-badge ${p}" style="margin-bottom:12px;">${platformNames[p] || p}</div>`;
-
-      for (let i = 0; i < crawlData.screenshotCount; i++) {
-        html += `<img src="/screenshots/${crawlData.sessionId}/screenshot_${i}.jpg" alt="screenshot ${i}" loading="lazy">`;
-      }
-      container.innerHTML = html;
-    }
-
-    // ============================================================
-    // 분석 결과 렌더링
-    // ============================================================
-    function renderAnalysis(analysis, crawlData) {
-      const container = document.getElementById('analysisResult');
-      let html = '';
-
-      // 제품 정보
-      if (analysis.product) {
-        const p = analysis.product;
-        html += `<div class="card">
-          <h3><span class="icon" style="background:#1e3a5f;color:#3b82f6;">P</span> 제품 정보</h3>
-          <div class="info-row"><span class="info-label">제품명</span><span class="info-value">${esc(p.name)}</span></div>
-          <div class="info-row"><span class="info-label">가격</span><span class="info-value">${esc(p.price)}</span></div>
-          <div class="info-row"><span class="info-label">원가</span><span class="info-value">${esc(p.originalPrice)}</span></div>
-          <div class="info-row"><span class="info-label">카테고리</span><span class="info-value">${esc(p.category)}</span></div>
-          <div class="info-row"><span class="info-label">브랜드</span><span class="info-value">${esc(p.brand)}</span></div>
-        </div>`;
-      }
-
-      // 디자인 분석
-      if (analysis.design) {
-        const d = analysis.design;
-        html += `<div class="card">
-          <h3><span class="icon" style="background:#2d1f4e;color:#8b5cf6;">D</span> 디자인 분석</h3>
-          <div class="info-row"><span class="info-label">톤</span><span class="info-value">${esc(d.tone)}</span></div>
-          <div class="info-row"><span class="info-label">폰트</span><span class="info-value">${esc(d.fontStyle)}</span></div>
-          <div class="info-row"><span class="info-label">이미지 스타일</span><span class="info-value">${esc(d.imageStyle)}</span></div>
-          <div style="margin-top:10px;">
-            <span class="info-label" style="font-size:13px;">메인 컬러</span>
-            <div class="color-swatches">
-              ${(d.mainColors || []).map(c => `<div class="swatch" style="background:${esc(c)}"><span>${esc(c)}</span></div>`).join('')}
-            </div>
-          </div>
-        </div>`;
-      }
-
-      // 페이지 구조
-      if (analysis.structure && analysis.structure.length) {
-        html += `<div class="card">
-          <h3><span class="icon" style="background:#1a3d2e;color:#10b981;">S</span> 페이지 구조</h3>
-          <ul class="structure-list">
-            ${analysis.structure.map((s, i) => `
-              <li class="structure-item">
-                <div class="name">${i + 1}. ${esc(s.section)}</div>
-                <div class="desc">${esc(s.description || '')} ${s.layout ? '| ' + esc(s.layout) : ''}</div>
-              </li>
-            `).join('')}
-          </ul>
-        </div>`;
-      }
-
-      // 카피라이팅
-      if (analysis.copywriting) {
-        const c = analysis.copywriting;
-        html += `<div class="card">
-          <h3><span class="icon" style="background:#3d2e1a;color:#f59e0b;">C</span> 카피라이팅 분석</h3>
-          <div class="info-row"><span class="info-label">헤드라인</span><span class="info-value">${esc(c.headlineStyle)}</span></div>
-          <div class="info-row"><span class="info-label">어조</span><span class="info-value">${esc(c.toneOfVoice)}</span></div>
-          <div style="margin-top:8px;">
-            <span class="info-label" style="font-size:13px;">핵심 문구</span>
-            <div class="tag-list">${(c.keyPhrases || []).map(p => `<span class="tag highlight">${esc(p)}</span>`).join('')}</div>
-          </div>
-          <div style="margin-top:8px;">
-            <span class="info-label" style="font-size:13px;">셀링 포인트</span>
-            <div class="tag-list">${(c.sellingPoints || []).map(p => `<span class="tag">${esc(p)}</span>`).join('')}</div>
-          </div>
-        </div>`;
-      }
-
-      // 타겟
-      if (analysis.target) {
-        const t = analysis.target;
-        html += `<div class="card">
-          <h3><span class="icon" style="background:#1a2d3d;color:#06b6d4;">T</span> 타겟 분석</h3>
-          <div class="info-row"><span class="info-label">타겟 고객</span><span class="info-value">${esc(t.audience)}</span></div>
-          <div style="margin-top:8px;">
-            <span class="info-label" style="font-size:13px;">고객 고민</span>
-            <div class="tag-list">${(t.painPoints || []).map(p => `<span class="tag">${esc(p)}</span>`).join('')}</div>
-          </div>
-          <div style="margin-top:8px;">
-            <span class="info-label" style="font-size:13px;">핵심 혜택</span>
-            <div class="tag-list">${(t.benefits || []).map(p => `<span class="tag highlight">${esc(p)}</span>`).join('')}</div>
-          </div>
-        </div>`;
-      }
-
-      // 종합 평가
-      if (analysis.overall) {
-        const o = analysis.overall;
-        const score = o.score || 0;
-        const scoreColor = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
-        html += `<div class="card">
-          <h3><span class="icon" style="background:#1f1a3d;color:#a78bfa;">R</span> 종합 평가</h3>
-          <div class="score-circle" style="border:3px solid ${scoreColor}; color:${scoreColor};">${score}</div>
-          <p style="text-align:center; font-size:14px; color:#aaa; margin-bottom:12px;">${esc(o.summary || '')}</p>
-          <div style="margin-top:8px;">
-            <span class="info-label" style="font-size:13px;">장점</span>
-            <div class="tag-list">${(o.strengths || []).map(s => `<span class="tag highlight">${esc(s)}</span>`).join('')}</div>
-          </div>
-          <div style="margin-top:8px;">
-            <span class="info-label" style="font-size:13px;">개선점</span>
-            <div class="tag-list">${(o.weaknesses || []).map(s => `<span class="tag">${esc(s)}</span>`).join('')}</div>
-          </div>
-        </div>`;
-      }
-
-      container.innerHTML = html;
-    }
-
-    // ============================================================
-    // 상세페이지 생성
-    // ============================================================
-    async function generatePage() {
-      if (!currentAnalysis) return showToast('먼저 분석을 실행해주세요', 'error');
-
-      const btn = document.getElementById('btnGenerate');
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span>생성 중...';
-
-      try {
-        const edits = document.getElementById('editInstructions').value.trim();
-
-        const res = await fetch('/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            analysis: currentAnalysis,
-            userEdits: edits || null
-          })
-        });
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error);
-
-        currentHtml = data.html;
-        currentOutputId = data.outputId;
-
-        switchTab('preview');
-        updatePreview(data.html);
-        detectPlaceholders(data.html);
-        showToast('상세페이지 생성 완료!', 'success');
-      } catch (err) {
-        showToast('생성 오류: ' + err.message, 'error');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = '상세페이지 생성하기';
-      }
-    }
-
-    // ============================================================
-    // 미리보기 업데이트
-    // ============================================================
-    function updatePreview(html) {
-      const iframe = document.getElementById('previewFrame');
-      const doc = iframe.contentDocument || iframe.contentWindow.document;
-      doc.open();
-      doc.write(html);
-      doc.close();
-
-      setTimeout(() => {
-        try {
-          const h = doc.body.scrollHeight;
-          iframe.style.height = Math.min(h + 40, 3000) + 'px';
-        } catch(e) {}
-      }, 500);
-    }
-
-    // ============================================================
-    // 이미지 플레이스홀더 감지 및 교체
-    // ============================================================
-    function detectPlaceholders(html) {
-      const matches = html.match(/data-placeholder-id="(\d+)"/g);
-      const area = document.getElementById('imageReplaceArea');
-
-      if (!matches || matches.length === 0) {
-        area.style.display = 'none';
-        return;
-      }
-
-      area.style.display = 'block';
-      const ids = matches.map(m => m.match(/"(\d+)"/)[1]);
-      const list = document.getElementById('placeholderList');
-      list.innerHTML = ids.map(id => `
-        <div class="placeholder-row">
-          <span>이미지 영역 #${id}</span>
-          <input type="file" accept="image/*" data-pid="${id}" onchange="previewPlaceholder(this, ${id})">
-          <img data-preview="${id}" style="display:none; width:60px; height:60px; object-fit:cover; border-radius:4px;">
-        </div>
-      `).join('');
-    }
-
-    function previewPlaceholder(input, id) {
-      const img = document.querySelector(`[data-preview="${id}"]`);
-      if (input.files[0]) {
-        img.src = URL.createObjectURL(input.files[0]);
-        img.style.display = 'block';
-      }
-    }
-
-    async function applyImageReplacements() {
-      const inputs = document.querySelectorAll('#placeholderList input[type="file"]');
-      let updated = false;
-
-      for (const input of inputs) {
-        if (!input.files[0]) continue;
-        const pid = input.dataset.pid;
-
-        const formData = new FormData();
-        formData.append('image', input.files[0]);
-
-        const res = await fetch('/api/upload-image', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (!data.success) continue;
-
-        // HTML에서 해당 플레이스홀더를 이미지로 교체
-        const placeholder = new RegExp(
-          `<div[^>]*data-placeholder-id="${pid}"[^>]*>[\\s\\S]*?<\\/div>`,
-          'i'
-        );
-        currentHtml = currentHtml.replace(placeholder,
-          `<img src="${data.url}" style="width:100%; display:block;" data-placeholder-id="${pid}">`
-        );
-        updated = true;
-      }
-
-      if (updated) {
-        updatePreview(currentHtml);
-        showToast('이미지가 교체되었습니다', 'success');
-      }
-    }
-
-    // ============================================================
-    // JPG 내보내기
-    // ============================================================
-    async function exportJpg(btn) {
-      if (!currentHtml) return showToast('먼저 상세페이지를 생성해주세요', 'error');
-
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span>JPG 변환 중...';
-
-      try {
-        const res = await fetch('/api/export-jpg', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            html: currentHtml,
-            outputId: currentOutputId
-          })
-        });
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error);
-
-        const resultDiv = document.getElementById('jpgResult');
-        resultDiv.style.display = 'block';
-        document.getElementById('jpgPreview').src = data.filePath + '?t=' + Date.now();
-        document.getElementById('jpgInfo').textContent = `${data.dimensions} | ${data.fileSize}`;
-        document.getElementById('jpgDownloadLink').href = data.filePath;
-        document.getElementById('jpgDownloadLink').download = data.fileName;
-        showToast('JPG 생성 완료!', 'success');
-      } catch (err) {
-        showToast('JPG 변환 오류: ' + err.message, 'error');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'JPG로 내보내기';
-      }
-    }
-
-    // ============================================================
-    // 분석 JSON 내보내기
-    // ============================================================
     async function exportAnalysisJson() {
-      if (!currentAnalysis) return showToast('분석 데이터가 없습니다', 'error');
-
-      const res = await fetch('/api/export-analysis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ analysis: currentAnalysis, sessionId: currentSessionId })
-      });
+      if (!currentAnalysis) return;
+      const res = await fetch('/api/export-analysis', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: currentAnalysis, sessionId: currentSessionId }) });
       const data = await res.json();
-      if (data.success) {
-        const a = document.createElement('a');
-        a.href = data.filePath;
-        a.download = data.fileName;
-        a.click();
-        showToast('분석 JSON 저장됨', 'success');
-      }
+      if (data.success) { const a = document.createElement('a'); a.href = data.filePath; a.download = data.fileName; a.click(); showToast('JSON 저장됨', 'success'); }
     }
 
-    // ============================================================
-    // HTML 편집
-    // ============================================================
-    function editHtml() {
-      if (!currentHtml) return;
-      document.getElementById('htmlEditor').value = currentHtml;
-      document.getElementById('htmlEditorModal').style.display = 'block';
-    }
-    function closeHtmlEditor() {
-      document.getElementById('htmlEditorModal').style.display = 'none';
-    }
-    function applyHtmlEdit() {
-      currentHtml = document.getElementById('htmlEditor').value;
-      updatePreview(currentHtml);
-      closeHtmlEditor();
-      showToast('HTML 수정 적용됨', 'success');
-    }
-
-    // ============================================================
-    // 유틸리티
-    // ============================================================
-    function switchTab(tabName) {
+    function switchTab(name) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(t => t.classList.remove('active'));
-      document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-      document.getElementById(`tab-${tabName}`).classList.add('active');
+      document.querySelector(`[data-tab="${name}"]`).classList.add('active');
+      document.getElementById(`tab-${name}`).classList.add('active');
     }
 
-    function showProgress(show) {
-      document.getElementById('progressSection').style.display = show ? 'block' : 'none';
-    }
-    function updateProgress(pct, text) {
-      document.getElementById('progressBar').style.width = pct + '%';
-      document.getElementById('progressText').textContent = text;
+    function setProgress(show, pct, text) {
+      const bar = document.getElementById('progressBar');
+      bar.style.display = show ? 'block' : 'none';
+      document.getElementById('progressFill').style.width = (pct||0) + '%';
+      document.getElementById('progressText').textContent = text || '';
     }
 
-    function showToast(msg, type = '') {
-      const t = document.getElementById('toast');
-      t.textContent = msg;
-      t.className = 'toast ' + type;
+    function showToast(msg, type) {
+      const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast ' + (type||'');
       requestAnimationFrame(() => t.classList.add('show'));
       setTimeout(() => t.classList.remove('show'), 3000);
     }
 
-    function esc(str) {
-      if (!str) return '-';
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
-    }
+    function esc(s) { if (!s || s === 'null' || s === 'undefined') return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
 
-    // Enter 키로 분석 시작
-    document.getElementById('urlInput').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') startAnalysis();
-    });
-
-    // ESC로 모달 닫기
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeHtmlEditor();
-    });
+    document.getElementById('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') startAnalysis(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHtmlEditor(); });
   </script>
 </body>
 </html>
