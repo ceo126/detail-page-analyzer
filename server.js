@@ -33,12 +33,20 @@ app.use('/uploads', express.static(DIRS.uploads));
 
 // 브라우저 관리
 let browser = null;
+let browserLaunching = null;
 
 async function getBrowser() {
-  if (!browser || !browser.isConnected()) {
-    browser = await chromium.launch({ headless: true });
-  }
-  return browser;
+  if (browser && browser.isConnected()) return browser;
+  if (browserLaunching) return browserLaunching;
+  browserLaunching = chromium.launch({ headless: true }).then(b => {
+    browser = b;
+    browserLaunching = null;
+    return b;
+  }).catch(err => {
+    browserLaunching = null;
+    throw err;
+  });
+  return browserLaunching;
 }
 
 // Gemini API 호출 (자동 재시도)
@@ -74,7 +82,9 @@ app.post('/api/crawl', async (req, res) => {
     }
     // 내부 네트워크 접근 차단
     const hostname = parsed.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.')) {
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0' || hostname === '::1' ||
+        hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('169.254.') ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) {
       return res.status(400).json({ error: '내부 네트워크 URL은 접근할 수 없습니다' });
     }
   } catch {
@@ -126,9 +136,16 @@ app.post('/api/crawl', async (req, res) => {
 
       // 제목 추출
       const titleSelectors = [
+        // 와디즈
+        '[class*="CampaignTitle"]', '[class*="campaign-title"]', '[class*="FundingTitle"]',
+        '[class*="campaignTitle"]', '.wd-detail h2', '.wd-detail h1',
+        // 쿠팡/네이버/일반
         'h1', '.prod-buy-header__title', '.topArea_headingArea__*',
         '._22kNQuEXmb', '.item_tit', '#fundingTitle',
-        '[class*="product-name"]', '[class*="productName"]', '[class*="item-name"]'
+        '[class*="product-name"]', '[class*="productName"]', '[class*="item-name"]',
+        // 무신사/오늘의집
+        '[class*="product_title"]', '[class*="goods_name"]',
+        // meta og:title fallback
       ];
       for (const sel of titleSelectors) {
         try {
@@ -138,6 +155,14 @@ app.post('/api/crawl', async (req, res) => {
             break;
           }
         } catch {}
+      }
+      // fallback: og:title 또는 document.title
+      if (!data.productName) {
+        const ogTitle = document.querySelector('meta[property="og:title"]');
+        if (ogTitle) data.productName = ogTitle.content?.substring(0, 200);
+      }
+      if (!data.productName && document.title) {
+        data.productName = document.title.replace(/[-|].*$/, '').trim().substring(0, 200);
       }
 
       // 가격 추출
@@ -184,10 +209,8 @@ app.post('/api/crawl', async (req, res) => {
 
     // 풀페이지 스크린샷
     const fullPath = path.join(screenshotDir, 'full_page.jpg');
-    await page.screenshot({ path: fullPath, fullPage: true, type: 'jpeg', quality: 70 });
-
-    // 풀페이지 이미지를 sharp로 분할 (갭 없음 보장)
-    const fullBuffer = fs.readFileSync(fullPath);
+    const fullBuffer = await page.screenshot({ fullPage: true, type: 'jpeg', quality: 70 });
+    fs.writeFileSync(fullPath, fullBuffer);
     const metadata = await sharp(fullBuffer).metadata();
     const totalHeight = metadata.height;
     const chunkHeight = 1200;
@@ -218,7 +241,8 @@ app.post('/api/crawl', async (req, res) => {
     });
   } catch (err) {
     console.error('크롤링 오류:', err);
-    res.status(500).json({ error: err.message });
+    const msg = err.message?.includes('timeout') ? '페이지 로딩 시간 초과. 다시 시도해주세요.' : '크롤링 중 오류가 발생했습니다.';
+    res.status(500).json({ error: msg });
   } finally {
     if (context) await context.close().catch(() => {});
   }
@@ -229,7 +253,7 @@ app.post('/api/crawl', async (req, res) => {
 // ============================================================
 app.post('/api/analyze', async (req, res) => {
   const { sessionId, pageData } = req.body;
-  if (!sessionId) return res.status(400).json({ error: 'sessionId 필요' });
+  if (!sessionId || !isValidSessionId(sessionId)) return res.status(400).json({ error: '유효하지 않은 sessionId' });
 
   try {
     const screenshotDir = path.join(DIRS.screenshots, sessionId);
@@ -242,22 +266,21 @@ app.post('/api/analyze', async (req, res) => {
       .sort()
       .slice(0, 10);
 
-    // 이미지를 base64로 변환
-    const imageParts = [];
-    for (const file of files) {
+    // 이미지를 base64로 변환 (병렬 처리)
+    const imageParts = await Promise.all(files.map(async (file) => {
       const filePath = path.join(screenshotDir, file);
       const buffer = fs.readFileSync(filePath);
       const resized = await sharp(buffer)
         .resize(1000, null, { withoutEnlargement: true })
         .jpeg({ quality: 75 })
         .toBuffer();
-      imageParts.push({
+      return {
         inlineData: {
           data: resized.toString('base64'),
           mimeType: 'image/jpeg'
         }
-      });
-    }
+      };
+    }));
 
     const prompt = `당신은 10년 경력의 쇼핑몰 상세페이지 마케팅 분석 전문가입니다.
 아래 스크린샷은 하나의 상품 상세페이지를 위에서부터 순서대로 캡처한 것입니다.
@@ -337,7 +360,11 @@ ${pageData ? `\n추가 추출 텍스트:\n- 제품명: ${pageData.productName ||
     let analysis;
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      analysis = JSON.parse(jsonMatch[0]);
+      try {
+        analysis = JSON.parse(jsonMatch[0]);
+      } catch {
+        analysis = { raw: text };
+      }
     } else {
       analysis = { raw: text };
     }
@@ -356,7 +383,7 @@ ${pageData ? `\n추가 추출 텍스트:\n- 제품명: ${pageData.productName ||
     res.json({ success: true, analysis });
   } catch (err) {
     console.error('분석 오류:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'AI 분석 중 오류가 발생했습니다. 다시 시도해주세요.' });
   }
 });
 
@@ -366,29 +393,29 @@ ${pageData ? `\n추가 추출 텍스트:\n- 제품명: ${pageData.productName ||
 app.post('/api/generate', async (req, res) => {
   const { analysis, userEdits, keyword, sessionId: reqSessionId } = req.body;
   if (!analysis) return res.status(400).json({ error: '분석 데이터 필요' });
+  if (keyword && keyword.length > 200) return res.status(400).json({ error: '키워드는 200자 이하로 입력하세요' });
+  if (userEdits && userEdits.length > 1000) return res.status(400).json({ error: '추가 요청사항은 1000자 이하로 입력하세요' });
 
   try {
     const editInstructions = userEdits ? `\n\n추가 요청사항:\n${userEdits}` : '';
 
     // 원본 스크린샷을 Vision에 같이 전달 (구조 복제 정확도 향상)
     let imageParts = [];
-    if (reqSessionId) {
+    if (reqSessionId && isValidSessionId(reqSessionId)) {
       const screenshotDir = path.join(DIRS.screenshots, reqSessionId);
       if (fs.existsSync(screenshotDir)) {
         const files = fs.readdirSync(screenshotDir)
           .filter(f => f.startsWith('screenshot_'))
           .sort()
           .slice(0, 6);
-        for (const file of files) {
+        imageParts = await Promise.all(files.map(async (file) => {
           const buffer = fs.readFileSync(path.join(screenshotDir, file));
           const resized = await sharp(buffer)
             .resize(800, null, { withoutEnlargement: true })
             .jpeg({ quality: 65 })
             .toBuffer();
-          imageParts.push({
-            inlineData: { data: resized.toString('base64'), mimeType: 'image/jpeg' }
-          });
-        }
+          return { inlineData: { data: resized.toString('base64'), mimeType: 'image/jpeg' } };
+        }));
       }
     }
 
@@ -462,7 +489,7 @@ ${editInstructions}
     });
   } catch (err) {
     console.error('생성 오류:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'HTML 생성 중 오류가 발생했습니다. 다시 시도해주세요.' });
   }
 });
 
@@ -472,6 +499,7 @@ ${editInstructions}
 app.post('/api/export-jpg', async (req, res) => {
   const { html, outputId } = req.body;
   if (!html) return res.status(400).json({ error: 'HTML 필요' });
+  if (outputId && !/^[\w\-]+$/.test(outputId)) return res.status(400).json({ error: '유효하지 않은 outputId' });
 
   let context = null;
   try {
@@ -510,7 +538,7 @@ app.post('/api/export-jpg', async (req, res) => {
     });
   } catch (err) {
     console.error('JPG 변환 오류:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'JPG 변환 중 오류가 발생했습니다.' });
   } finally {
     if (context) await context.close().catch(() => {});
   }
@@ -554,14 +582,18 @@ app.get('/api/history', (req, res) => {
       .sort((a, b) => b.localeCompare(a))
       .slice(0, 20);
 
-    const history = files.map(f => {
-      const data = JSON.parse(fs.readFileSync(path.join(DIRS.history, f), 'utf-8'));
-      return {
-        sessionId: data.sessionId,
-        productName: data.productName,
-        platform: data.platform,
-        createdAt: data.createdAt
-      };
+    const history = files.flatMap(f => {
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(DIRS.history, f), 'utf-8'));
+        return [{
+          sessionId: data.sessionId,
+          productName: data.productName,
+          platform: data.platform,
+          createdAt: data.createdAt
+        }];
+      } catch {
+        return [];
+      }
     });
 
     res.json({ success: true, history });
@@ -571,13 +603,15 @@ app.get('/api/history', (req, res) => {
 });
 
 app.get('/api/history/:sessionId', (req, res) => {
+  if (!isValidSessionId(req.params.sessionId)) return res.status(400).json({ error: '유효하지 않은 sessionId' });
   try {
     const filePath = path.join(DIRS.history, `${req.params.sessionId}.json`);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: '히스토리 없음' });
     const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     res.json({ success: true, ...data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('히스토리 조회 오류:', err);
+    res.status(500).json({ error: '히스토리 조회 중 오류가 발생했습니다.' });
   }
 });
 
@@ -588,7 +622,8 @@ app.post('/api/export-analysis', (req, res) => {
   const { analysis, sessionId } = req.body;
   if (!analysis) return res.status(400).json({ error: '분석 데이터 필요' });
 
-  const fileName = `analysis_${sessionId || Date.now()}.json`;
+  const safeId = (sessionId && isValidSessionId(sessionId)) ? sessionId : Date.now();
+  const fileName = `analysis_${safeId}.json`;
   const filePath = path.join(DIRS.output, fileName);
   fs.writeFileSync(filePath, JSON.stringify(analysis, null, 2));
 
@@ -619,6 +654,11 @@ function cleanupOldSessions() {
 // 서버 시작 시 + 6시간마다 정리
 cleanupOldSessions();
 setInterval(cleanupOldSessions, 6 * 60 * 60 * 1000);
+
+// sessionId 검증 (Path Traversal 방지)
+function isValidSessionId(id) {
+  return /^\d+$/.test(id);
+}
 
 // ============================================================
 // 유틸리티 함수
@@ -687,7 +727,9 @@ app.listen(PORT, () => {
   console.log(`상세페이지 분석기 서버 실행중: http://localhost:${PORT}`);
 });
 
-process.on('SIGINT', async () => {
+async function shutdown() {
   if (browser) await browser.close();
   process.exit();
-});
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
