@@ -651,8 +651,8 @@ function cleanupOldSessions() {
   });
 }
 
-// 서버 시작 시 + 6시간마다 정리
-cleanupOldSessions();
+// 서버 시작 시 + 6시간마다 정리 (비동기로 실행하여 서버 시작 차단 방지)
+setTimeout(cleanupOldSessions, 5000);
 setInterval(cleanupOldSessions, 6 * 60 * 60 * 1000);
 
 // sessionId 검증 (Path Traversal 방지)
@@ -733,3 +733,4 @@ async function shutdown() {
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+process.on('SIGHUP', shutdown);
