@@ -125,16 +125,90 @@ app.post('/api/crawl', async (req, res) => {
     // "더보기"/"상세정보" 버튼 클릭하여 숨겨진 콘텐츠 펼치기
     await expandDetailContent(page, platform);
 
-    // 자동 스크롤 (lazy load 이미지 로딩)
-    await autoScroll(page);
-
-    // 스크롤 완료 후 이미지 로딩 대기
-    await page.waitForTimeout(2000);
-
     // iframe 내 상세 이미지가 있으면 메인 페이지에 펼치기
     await expandIframeContent(page);
 
-    // HTML 텍스트 추출
+    // ============================================================
+    // 실제 스크롤하며 뷰포트 단위 스크린샷 캡처
+    // ============================================================
+    const sessionId = Date.now().toString();
+    const screenshotDir = path.join(DIRS.screenshots, sessionId);
+    fs.mkdirSync(screenshotDir, { recursive: true });
+
+    const viewportHeight = 900;
+    const scrollStep = 800; // 뷰포트보다 약간 작게 (100px 오버랩)
+    let scrollY = 0;
+    let chunkIndex = 0;
+    const maxChunks = 25;
+    let lastScrollHeight = 0;
+    let staleCount = 0;
+
+    // 맨 위로 이동
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(500);
+
+    while (chunkIndex < maxChunks) {
+      // 현재 위치에서 뷰포트 스크린샷
+      await page.waitForTimeout(400); // 이미지 렌더링 대기
+
+      // 현재 뷰포트에서 보이는 이미지들 로딩 대기
+      await page.evaluate(() => {
+        return Promise.all(
+          Array.from(document.querySelectorAll('img')).filter(img => {
+            const rect = img.getBoundingClientRect();
+            return rect.top < window.innerHeight && rect.bottom > 0;
+          }).map(img => {
+            if (img.complete) return Promise.resolve();
+            return new Promise(resolve => {
+              img.onload = resolve;
+              img.onerror = resolve;
+              setTimeout(resolve, 2000);
+            });
+          })
+        );
+      }).catch(() => {});
+
+      const chunkPath = path.join(screenshotDir, `screenshot_${chunkIndex}.jpg`);
+      await page.screenshot({ type: 'jpeg', quality: 80, path: chunkPath });
+      chunkIndex++;
+
+      // 다음 위치로 스크롤
+      scrollY += scrollStep;
+      await page.evaluate((y) => window.scrollTo(0, y), scrollY);
+      await page.waitForTimeout(300);
+
+      // 페이지 끝 감지
+      const pageInfo = await page.evaluate(() => ({
+        scrollHeight: document.body.scrollHeight,
+        scrollTop: window.scrollY,
+        innerHeight: window.innerHeight,
+      }));
+
+      // 더 이상 스크롤 못하면 종료
+      if (pageInfo.scrollTop + pageInfo.innerHeight >= pageInfo.scrollHeight - 50) {
+        // 마지막 하단 영역 한 장 더 캡처
+        await page.waitForTimeout(400);
+        const lastChunkPath = path.join(screenshotDir, `screenshot_${chunkIndex}.jpg`);
+        await page.screenshot({ type: 'jpeg', quality: 80, path: lastChunkPath });
+        chunkIndex++;
+        break;
+      }
+
+      // 동적 로딩 페이지에서 스크롤 높이 변화 없으면 종료
+      if (pageInfo.scrollHeight === lastScrollHeight) {
+        staleCount++;
+        if (staleCount >= 3) break;
+      } else {
+        staleCount = 0;
+      }
+      lastScrollHeight = pageInfo.scrollHeight;
+    }
+
+    const totalHeight = await page.evaluate(() => document.body.scrollHeight);
+    const numChunks = chunkIndex;
+
+    // HTML 텍스트 추출 (스크롤 완료 후 — 모든 lazy 콘텐츠 로딩된 상태)
+    await page.evaluate(() => window.scrollTo(0, 0));
     const pageData = await page.evaluate((platform) => {
       const data = {
         title: document.title,
@@ -145,16 +219,12 @@ app.post('/api/crawl', async (req, res) => {
 
       // 제목 추출
       const titleSelectors = [
-        // 와디즈
         '[class*="CampaignTitle"]', '[class*="campaign-title"]', '[class*="FundingTitle"]',
         '[class*="campaignTitle"]', '.wd-detail h2', '.wd-detail h1',
-        // 쿠팡/네이버/일반
         'h1', '.prod-buy-header__title', '.topArea_headingArea__*',
         '._22kNQuEXmb', '.item_tit', '#fundingTitle',
         '[class*="product-name"]', '[class*="productName"]', '[class*="item-name"]',
-        // 무신사/오늘의집
         '[class*="product_title"]', '[class*="goods_name"]',
-        // meta og:title fallback
       ];
       for (const sel of titleSelectors) {
         try {
@@ -165,7 +235,6 @@ app.post('/api/crawl', async (req, res) => {
           }
         } catch {}
       }
-      // fallback: og:title 또는 document.title
       if (!data.productName) {
         const ogTitle = document.querySelector('meta[property="og:title"]');
         if (ogTitle) data.productName = ogTitle.content?.substring(0, 200);
@@ -195,50 +264,29 @@ app.post('/api/crawl', async (req, res) => {
         const t = el.textContent.trim();
         if (t.length > 5 && t.length < 500) data.texts.push(t);
       });
-      data.texts = [...new Set(data.texts)].slice(0, 100);
+      data.texts = [...new Set(data.texts)].slice(0, 150);
 
-      // 상세 이미지 수집
+      // 상세 이미지 수집 (스크롤 완료 후라 모든 lazy 이미지 포함)
       const imgs = document.querySelectorAll('img');
       imgs.forEach(img => {
-        const src = img.src || img.dataset?.src || img.dataset?.lazySrc || '';
-        if (src && !src.includes('icon') && !src.includes('logo') && !src.includes('svg') &&
-            img.naturalWidth > 200) {
+        const src = img.src || img.dataset?.src || img.dataset?.lazySrc ||
+                    img.dataset?.originalSrc || img.dataset?.lazyload || '';
+        if (src && src.startsWith('http') &&
+            !src.includes('icon') && !src.includes('logo') && !src.includes('.svg') &&
+            !src.includes('pixel') && !src.includes('spacer') && !src.includes('blank') &&
+            (img.naturalWidth > 150 || img.width > 150 || !img.complete)) {
           data.images.push(src);
         }
       });
-      data.images = [...new Set(data.images)].slice(0, 50);
+      data.images = [...new Set(data.images)].slice(0, 80);
 
       return data;
     }, platform);
 
-    // 전체 페이지 스크린샷 (분할) - 갭 없이
-    const sessionId = Date.now().toString();
-    const screenshotDir = path.join(DIRS.screenshots, sessionId);
-    fs.mkdirSync(screenshotDir, { recursive: true });
-
-    // 풀페이지 스크린샷
-    const fullPath = path.join(screenshotDir, 'full_page.jpg');
-    const fullBuffer = await page.screenshot({ fullPage: true, type: 'jpeg', quality: 70 });
-    fs.writeFileSync(fullPath, fullBuffer);
-    const metadata = await sharp(fullBuffer).metadata();
-    const totalHeight = metadata.height;
-    const chunkHeight = 1200;
-    const numChunks = Math.min(Math.ceil(totalHeight / chunkHeight), 15);
-
-    for (let i = 0; i < numChunks; i++) {
-      const top = i * chunkHeight;
-      const height = Math.min(chunkHeight, totalHeight - top);
-      if (height <= 0) break;
-
-      const chunkPath = path.join(screenshotDir, `screenshot_${i}.jpg`);
-      await sharp(fullBuffer)
-        .extract({ left: 0, top, width: metadata.width, height })
-        .jpeg({ quality: 80 })
-        .toFile(chunkPath);
-    }
-
     await context.close();
     context = null;
+
+    console.log(`크롤링 완료: ${numChunks}장 캡처, 전체 높이 ${totalHeight}px`);
 
     res.json({
       success: true,
