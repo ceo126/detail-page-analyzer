@@ -125,8 +125,59 @@ app.post('/api/crawl', async (req, res) => {
     // "더보기"/"상세정보" 버튼 클릭하여 숨겨진 콘텐츠 펼치기
     await expandDetailContent(page, platform);
 
+    // ============================================================
+    // 네트워크 인터셉트: 브라우저가 실제 로딩하는 이미지 URL 수집
+    // ============================================================
+    const networkImages = new Set();
+    page.on('response', async (response) => {
+      try {
+        const ct = response.headers()['content-type'] || '';
+        const url = response.url();
+        if (ct.startsWith('image/') && response.status() === 200) {
+          const contentLength = parseInt(response.headers()['content-length'] || '0');
+          // 5KB 이상 이미지만 (아이콘/트래커 제외)
+          if (contentLength > 5000 || contentLength === 0) {
+            if (!url.includes('icon') && !url.includes('logo') && !url.includes('pixel') &&
+                !url.includes('tracker') && !url.includes('beacon') && !url.includes('.svg')) {
+              networkImages.add(url);
+            }
+          }
+        }
+      } catch {}
+    });
+
+    // ============================================================
     // iframe 내 상세 이미지가 있으면 메인 페이지에 펼치기
+    // ============================================================
     await expandIframeContent(page);
+
+    // ============================================================
+    // 전체 스크롤 가능 높이 파악 (body vs 내부 스크롤 컨테이너)
+    // ============================================================
+    const scrollInfo = await page.evaluate(() => {
+      // body 스크롤 높이 체크
+      let scrollHeight = document.body.scrollHeight;
+      let scrollContainer = null;
+
+      // body가 뷰포트와 같으면 → 내부 스크롤 컨테이너 탐색
+      if (scrollHeight <= window.innerHeight + 100) {
+        const candidates = document.querySelectorAll('div, main, section, article');
+        let maxH = 0;
+        for (const el of candidates) {
+          if (el.scrollHeight > el.clientHeight + 100 && el.scrollHeight > maxH) {
+            maxH = el.scrollHeight;
+            // CSS selector 생성
+            scrollContainer = el.id ? '#' + el.id :
+              el.className ? '.' + el.className.split(' ')[0] : null;
+            scrollHeight = maxH;
+          }
+        }
+      }
+
+      return { scrollHeight, scrollContainer, viewportHeight: window.innerHeight };
+    });
+
+    console.log(`스크롤 정보: 높이=${scrollInfo.scrollHeight}px, 컨테이너=${scrollInfo.scrollContainer || 'body'}`);
 
     // ============================================================
     // 실제 스크롤하며 뷰포트 단위 스크린샷 캡처
@@ -135,80 +186,104 @@ app.post('/api/crawl', async (req, res) => {
     const screenshotDir = path.join(DIRS.screenshots, sessionId);
     fs.mkdirSync(screenshotDir, { recursive: true });
 
-    const viewportHeight = 900;
-    const scrollStep = 800; // 뷰포트보다 약간 작게 (100px 오버랩)
+    const scrollStep = 700;
     let scrollY = 0;
     let chunkIndex = 0;
-    const maxChunks = 25;
-    let lastScrollHeight = 0;
+    const maxChunks = 30;
+    let lastScrollTop = -1;
     let staleCount = 0;
+    const containerSel = scrollInfo.scrollContainer;
 
     // 맨 위로 이동
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate((sel) => {
+      if (sel) {
+        const el = document.querySelector(sel);
+        if (el) { el.scrollTop = 0; return; }
+      }
+      window.scrollTo(0, 0);
+    }, containerSel);
     await page.waitForTimeout(500);
 
     while (chunkIndex < maxChunks) {
-      // 현재 위치에서 뷰포트 스크린샷
-      await page.waitForTimeout(400); // 이미지 렌더링 대기
-
       // 현재 뷰포트에서 보이는 이미지들 로딩 대기
       await page.evaluate(() => {
         return Promise.all(
           Array.from(document.querySelectorAll('img')).filter(img => {
             const rect = img.getBoundingClientRect();
-            return rect.top < window.innerHeight && rect.bottom > 0;
+            return rect.top < window.innerHeight + 200 && rect.bottom > -200;
           }).map(img => {
-            if (img.complete) return Promise.resolve();
+            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
             return new Promise(resolve => {
               img.onload = resolve;
               img.onerror = resolve;
-              setTimeout(resolve, 2000);
+              setTimeout(resolve, 3000);
             });
           })
         );
       }).catch(() => {});
+      await page.waitForTimeout(300);
 
+      // 스크린샷 캡처
       const chunkPath = path.join(screenshotDir, `screenshot_${chunkIndex}.jpg`);
       await page.screenshot({ type: 'jpeg', quality: 80, path: chunkPath });
       chunkIndex++;
 
-      // 다음 위치로 스크롤
+      // 다음 위치로 스크롤 (body 또는 내부 컨테이너)
       scrollY += scrollStep;
-      await page.evaluate((y) => window.scrollTo(0, y), scrollY);
-      await page.waitForTimeout(300);
+      const scrollResult = await page.evaluate(({ sel, y }) => {
+        let scrollTop, scrollHeight, clientHeight;
+        if (sel) {
+          const el = document.querySelector(sel);
+          if (el) {
+            el.scrollTop = y;
+            scrollTop = el.scrollTop;
+            scrollHeight = el.scrollHeight;
+            clientHeight = el.clientHeight;
+            return { scrollTop, scrollHeight, clientHeight };
+          }
+        }
+        window.scrollTo(0, y);
+        return {
+          scrollTop: window.scrollY || document.documentElement.scrollTop,
+          scrollHeight: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+          clientHeight: window.innerHeight
+        };
+      }, { sel: containerSel, y: scrollY });
+      await page.waitForTimeout(200);
 
-      // 페이지 끝 감지
-      const pageInfo = await page.evaluate(() => ({
-        scrollHeight: document.body.scrollHeight,
-        scrollTop: window.scrollY,
-        innerHeight: window.innerHeight,
-      }));
-
-      // 더 이상 스크롤 못하면 종료
-      if (pageInfo.scrollTop + pageInfo.innerHeight >= pageInfo.scrollHeight - 50) {
-        // 마지막 하단 영역 한 장 더 캡처
-        await page.waitForTimeout(400);
-        const lastChunkPath = path.join(screenshotDir, `screenshot_${chunkIndex}.jpg`);
-        await page.screenshot({ type: 'jpeg', quality: 80, path: lastChunkPath });
-        chunkIndex++;
-        break;
-      }
-
-      // 동적 로딩 페이지에서 스크롤 높이 변화 없으면 종료
-      if (pageInfo.scrollHeight === lastScrollHeight) {
+      // 스크롤이 안 움직이면 (끝에 도달) 종료
+      if (scrollResult.scrollTop === lastScrollTop) {
         staleCount++;
-        if (staleCount >= 3) break;
+        if (staleCount >= 2) break;
       } else {
         staleCount = 0;
       }
-      lastScrollHeight = pageInfo.scrollHeight;
+      lastScrollTop = scrollResult.scrollTop;
+
+      // 끝 도달 체크
+      if (scrollResult.scrollTop + scrollResult.clientHeight >= scrollResult.scrollHeight - 50) {
+        await page.waitForTimeout(400);
+        const lastPath = path.join(screenshotDir, `screenshot_${chunkIndex}.jpg`);
+        await page.screenshot({ type: 'jpeg', quality: 80, path: lastPath });
+        chunkIndex++;
+        break;
+      }
     }
 
-    const totalHeight = await page.evaluate(() => document.body.scrollHeight);
+    const totalHeight = scrollInfo.scrollHeight;
     const numChunks = chunkIndex;
 
-    // HTML 텍스트 추출 (스크롤 완료 후 — 모든 lazy 콘텐츠 로딩된 상태)
-    await page.evaluate(() => window.scrollTo(0, 0));
+    // ============================================================
+    // 텍스트 + 이미지 URL 추출 (스크롤 완료 후)
+    // ============================================================
+    await page.evaluate((sel) => {
+      if (sel) {
+        const el = document.querySelector(sel);
+        if (el) { el.scrollTop = 0; return; }
+      }
+      window.scrollTo(0, 0);
+    }, containerSel);
+
     const pageData = await page.evaluate((platform) => {
       const data = {
         title: document.title,
@@ -258,35 +333,101 @@ app.post('/api/crawl', async (req, res) => {
         } catch {}
       }
 
-      // 본문 텍스트
-      const textEls = document.querySelectorAll('p, h1, h2, h3, h4, li, span, td, th');
-      textEls.forEach(el => {
-        const t = el.textContent.trim();
-        if (t.length > 5 && t.length < 500) data.texts.push(t);
+      // 본문 텍스트 (메인 + iframe)
+      function extractTexts(doc) {
+        const texts = [];
+        const textEls = doc.querySelectorAll('p, h1, h2, h3, h4, li, span, td, th, div');
+        textEls.forEach(el => {
+          if (el.children.length > 3) return; // 컨테이너 div 건너뛰기
+          const t = el.textContent.trim();
+          if (t.length > 5 && t.length < 500) texts.push(t);
+        });
+        return texts;
+      }
+      data.texts = extractTexts(document);
+      // iframe 텍스트도 추출
+      document.querySelectorAll('iframe').forEach(iframe => {
+        try {
+          if (iframe.contentDocument) {
+            data.texts.push(...extractTexts(iframe.contentDocument));
+          }
+        } catch {}
       });
-      data.texts = [...new Set(data.texts)].slice(0, 150);
+      data.texts = [...new Set(data.texts)].slice(0, 200);
 
-      // 상세 이미지 수집 (스크롤 완료 후라 모든 lazy 이미지 포함)
-      const imgs = document.querySelectorAll('img');
-      imgs.forEach(img => {
-        const src = img.src || img.dataset?.src || img.dataset?.lazySrc ||
-                    img.dataset?.originalSrc || img.dataset?.lazyload || '';
-        if (src && src.startsWith('http') &&
-            !src.includes('icon') && !src.includes('logo') && !src.includes('.svg') &&
-            !src.includes('pixel') && !src.includes('spacer') && !src.includes('blank') &&
-            (img.naturalWidth > 150 || img.width > 150 || !img.complete)) {
-          data.images.push(src);
-        }
+      // 이미지 수집 (DOM에서 — 메인 + iframe)
+      function extractImages(doc) {
+        const imgs = [];
+        doc.querySelectorAll('img, [style*="background-image"]').forEach(el => {
+          let src = '';
+          if (el.tagName === 'IMG') {
+            src = el.src || el.dataset?.src || el.dataset?.lazySrc ||
+                  el.dataset?.originalSrc || el.dataset?.lazyload ||
+                  el.dataset?.original || el.getAttribute('data-src') || '';
+          } else {
+            const bg = el.style.backgroundImage || '';
+            const m = bg.match(/url\(['"]?(.*?)['"]?\)/);
+            if (m) src = m[1];
+          }
+          if (src && src.startsWith('http') &&
+              !src.includes('icon') && !src.includes('logo') && !src.includes('.svg') &&
+              !src.includes('pixel') && !src.includes('spacer') && !src.includes('blank') &&
+              !src.includes('loading') && !src.includes('placeholder')) {
+            imgs.push(src);
+          }
+        });
+        return imgs;
+      }
+      data.images = extractImages(document);
+      document.querySelectorAll('iframe').forEach(iframe => {
+        try {
+          if (iframe.contentDocument) {
+            data.images.push(...extractImages(iframe.contentDocument));
+          }
+        } catch {}
       });
-      data.images = [...new Set(data.images)].slice(0, 80);
+      data.images = [...new Set(data.images)].slice(0, 100);
 
       return data;
     }, platform);
 
+    // 네트워크에서 수집된 이미지 URL 병합 (DOM에서 못 잡은 것 포함)
+    const allImages = [...new Set([...pageData.images, ...networkImages])];
+    pageData.images = allImages.slice(0, 100);
+
+    // ============================================================
+    // 실제 이미지 다운로드 (스크린샷과 별도로)
+    // ============================================================
+    const downloadedImages = [];
+    const imageDir = path.join(screenshotDir, 'images');
+    fs.mkdirSync(imageDir, { recursive: true });
+
+    const downloadPromises = pageData.images.slice(0, 30).map(async (imgUrl, idx) => {
+      try {
+        const response = await page.context().request.get(imgUrl, { timeout: 8000 });
+        if (response.ok()) {
+          const buffer = await response.body();
+          // 10KB 이상 이미지만 저장
+          if (buffer.length > 10000) {
+            const ext = imgUrl.match(/\.(jpg|jpeg|png|webp|gif)/i)?.[1] || 'jpg';
+            const imgPath = path.join(imageDir, `img_${idx}.${ext}`);
+            fs.writeFileSync(imgPath, buffer);
+            downloadedImages.push({
+              index: idx,
+              url: imgUrl,
+              localPath: `/screenshots/${sessionId}/images/img_${idx}.${ext}`,
+              size: buffer.length
+            });
+          }
+        }
+      } catch {}
+    });
+    await Promise.all(downloadPromises);
+
     await context.close();
     context = null;
 
-    console.log(`크롤링 완료: ${numChunks}장 캡처, 전체 높이 ${totalHeight}px`);
+    console.log(`크롤링 완료: 스크린샷 ${numChunks}장, 이미지 ${downloadedImages.length}개 다운로드, 전체 높이 ${totalHeight}px`);
 
     res.json({
       success: true,
@@ -294,7 +435,8 @@ app.post('/api/crawl', async (req, res) => {
       platform,
       pageData,
       screenshotCount: numChunks,
-      totalHeight
+      totalHeight,
+      downloadedImages
     });
   } catch (err) {
     console.error('크롤링 오류:', err);
