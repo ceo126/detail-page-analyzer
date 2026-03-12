@@ -272,7 +272,7 @@
       display: flex;
       justify-content: center;
     }
-    .preview-wrap iframe { width: 860px; min-height: 600px; border: none; }
+    .preview-wrap iframe { width: 860px; min-height: 800px; border: none; }
 
     .jpg-result {
       background: #1a1d27;
@@ -392,7 +392,8 @@
     <span class="badge">Gemini Vision</span>
     <div class="url-bar">
       <input type="text" id="urlInput" placeholder="분석할 상세페이지 URL (쿠팡, 네이버, 와디즈, 자사몰 등)">
-      <button class="btn-analyze" id="btnAnalyze" onclick="startAnalysis()">분석</button>
+      <button class="btn-analyze" id="btnCrawl" onclick="startCrawl()">이미지 가져오기</button>
+      <button class="btn-analyze" id="btnAnalyze" onclick="startAnalyze()" style="display:none; background:#8b5cf6;">AI 분석</button>
     </div>
     <div class="header-right">
       <div class="history-dropdown">
@@ -448,7 +449,7 @@
         <div class="tab-panel" id="tab-generate">
           <div class="card" style="border-color:#3b82f6; margin-bottom:16px;">
             <div class="card-title"><span class="card-icon" style="background:#1e3a5f;color:#3b82f6;">K</span>키워드 기반 생성</div>
-            <p style="font-size:12px; color:#888; margin-bottom:10px; line-height:1.5;">원본 상세페이지의 디자인/구조를 그대로 유지하면서, 입력한 키워드(상품)에 맞게 내용을 새로 생성합니다.</p>
+            <p style="font-size:12px; color:#888; margin-bottom:10px; line-height:1.5;">원본 상세페이지의 디자인/구조를 그대로 유지하면서, 입력한 키워드(상품)에 맞게 내용을 새로 생성합니다.<br>비워두면 원본 상품 그대로 상세페이지를 생성합니다.</p>
             <div style="display:flex; gap:8px;">
               <input type="text" id="keywordInput" placeholder="예: 무선 핸디 청소기, 캠핑 접이식 의자, 유기농 단백질 쉐이크..."
                 style="flex:1; background:#252830; border:1px solid #2d3140; border-radius:8px; color:#fff; padding:10px 14px; font-size:14px; outline:none;"
@@ -520,17 +521,33 @@
     document.addEventListener('mouseup', () => { isResizing = false; resizer.classList.remove('active'); });
 
     // ============================================================
-    // 분석 시작
+    // 1단계: 이미지 가져오기 (크롤링만)
     // ============================================================
-    async function startAnalysis() {
+    let currentPageData = null;
+    let currentUrl = null;
+
+    async function startCrawl() {
       const url = document.getElementById('urlInput').value.trim();
       if (!url) return showToast('URL을 입력해주세요', 'error');
       try { new URL(url); } catch { return showToast('올바른 URL이 아닙니다', 'error'); }
 
-      const btn = document.getElementById('btnAnalyze');
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span>';
-      setProgress(true, 15, '크롤링 중...');
+      const btnCrawl = document.getElementById('btnCrawl');
+      const btnAnalyze = document.getElementById('btnAnalyze');
+      btnCrawl.disabled = true;
+      btnCrawl.innerHTML = '<span class="spinner"></span>가져오는 중...';
+      btnAnalyze.style.display = 'none';
+      setProgress(true, 15, '페이지 크롤링 중...');
+
+      // 분석 결과 초기화
+      currentAnalysis = null;
+      currentSessionId = null;
+      currentPageData = null;
+      currentUrl = url;
+      document.getElementById('analysisContent').innerHTML = `
+        <div class="empty-state" style="min-height:300px;">
+          <div class="icon">&#128202;</div>
+          <div>이미지를 확인한 후 "AI 분석" 버튼을 눌러주세요</div>
+        </div>`;
 
       try {
         const crawlRes = await fetch('/api/crawl', {
@@ -542,39 +559,79 @@
         if (!crawl.success) throw new Error(crawl.error);
 
         currentSessionId = crawl.sessionId;
-        renderScreenshot(crawl);
-        setProgress(true, 50, 'AI 분석 중...');
+        currentPageData = crawl.pageData;
+        renderScreenshots(crawl);
+        setProgress(true, 100, `이미지 ${crawl.screenshotCount}장 캡처 완료`);
+        setTimeout(() => setProgress(false), 1500);
+        showToast(`${crawl.screenshotCount}장 캡처 완료 — "AI 분석" 버튼을 눌러 분석하세요`, 'success');
 
+        // AI 분석 버튼 표시
+        btnAnalyze.style.display = 'inline-flex';
+        switchTab('analysis');
+      } catch (err) {
+        showToast(err.message, 'error');
+        setProgress(false);
+      } finally {
+        btnCrawl.disabled = false;
+        btnCrawl.textContent = '이미지 가져오기';
+      }
+    }
+
+    // ============================================================
+    // 2단계: AI 분석
+    // ============================================================
+    async function startAnalyze() {
+      if (!currentSessionId) return showToast('먼저 이미지를 가져오세요', 'error');
+
+      const btnAnalyze = document.getElementById('btnAnalyze');
+      btnAnalyze.disabled = true;
+      btnAnalyze.innerHTML = '<span class="spinner"></span>AI 분석 중...';
+      setProgress(true, 30, 'Gemini AI 분석 중...');
+
+      try {
         const analyzeRes = await fetch('/api/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId: crawl.sessionId, pageData: { ...crawl.pageData, url } })
+          body: JSON.stringify({ sessionId: currentSessionId, pageData: { ...currentPageData, url: currentUrl } })
         });
+        setProgress(true, 80, '분석 결과 처리 중...');
         const analyze = await analyzeRes.json();
         if (!analyze.success) throw new Error(analyze.error);
 
         currentAnalysis = analyze.analysis;
         renderAnalysis(analyze.analysis);
         switchTab('analysis');
-        setProgress(true, 100, '완료');
+        setProgress(true, 100, '분석 완료');
         setTimeout(() => setProgress(false), 800);
-        showToast('분석 완료', 'success');
+        showToast('AI 분석 완료', 'success');
+
+        // 키워드 자동 채움 (분석된 제품명)
+        const productName = analyze.analysis?.product?.name;
+        if (productName) {
+          document.getElementById('keywordInput').placeholder = `원본: ${productName} → 새 키워드 입력 (비우면 원본 그대로)`;
+        }
       } catch (err) {
         showToast(err.message, 'error');
         setProgress(false);
       } finally {
-        btn.disabled = false;
-        btn.textContent = '분석';
+        btnAnalyze.disabled = false;
+        btnAnalyze.textContent = 'AI 분석';
       }
     }
 
     // ============================================================
-    // 원본 스크린샷 표시 (풀페이지 1장)
+    // 원본 스크린샷 표시 (모든 캡처 이미지)
     // ============================================================
-    function renderScreenshot(crawl) {
+    function renderScreenshots(crawl) {
       const area = document.getElementById('screenshotArea');
-      // full_page.jpg 사용 (엑박 방지)
-      area.innerHTML = `<img src="/screenshots/${crawl.sessionId}/full_page.jpg" alt="원본 페이지" onerror="this.onerror=null; this.src='/screenshots/${crawl.sessionId}/screenshot_0.jpg';">`;
+      let html = '';
+      for (let i = 0; i < crawl.screenshotCount; i++) {
+        html += `<img src="/screenshots/${crawl.sessionId}/screenshot_${i}.jpg?t=${Date.now()}" alt="캡처 ${i+1}" style="margin-bottom:2px;">`;
+      }
+      html += `<div style="text-align:center; padding:12px; color:#555; font-size:12px;">
+        총 ${crawl.screenshotCount}장 | 전체 높이: ${crawl.totalHeight}px
+      </div>`;
+      area.innerHTML = html;
 
       const badge = document.getElementById('platformBadge');
       const names = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', ohouse:'오늘의집', other:'기타' };
@@ -683,30 +740,33 @@
     async function generatePage() {
       if (!currentAnalysis) return showToast('먼저 분석하세요', 'error');
       const keyword = document.getElementById('keywordInput').value.trim();
-      if (!keyword) return showToast('키워드를 입력해주세요', 'error');
       const btn = document.getElementById('btnGenerate');
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span>생성 중...';
+      btn.innerHTML = '<span class="spinner"></span>생성 중... (10~20초 소요)';
+      setProgress(true, 30, '상세페이지 생성 중...');
       try {
         const res = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             analysis: currentAnalysis,
-            keyword,
+            keyword: keyword || null,
             sessionId: currentSessionId,
             userEdits: document.getElementById('editInstructions').value.trim() || null
           })
         });
+        setProgress(true, 80, 'HTML 처리 중...');
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
         currentHtml = data.html;
         currentOutputId = data.outputId;
         switchTab('preview');
         updatePreview(data.html);
-        showToast('생성 완료', 'success');
-      } catch (err) { showToast(err.message, 'error'); }
-      finally { btn.disabled = false; btn.textContent = '상세페이지 생성하기'; }
+        setProgress(true, 100, '완료');
+        setTimeout(() => setProgress(false), 800);
+        showToast('생성 완료' + (keyword ? ` (${keyword})` : ''), 'success');
+      } catch (err) { showToast(err.message, 'error'); setProgress(false); }
+      finally { btn.disabled = false; btn.textContent = '생성'; }
     }
 
     function updatePreview(html) {
@@ -748,9 +808,9 @@
       const res = await fetch('/api/history'); const data = await res.json();
       const names = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', other:'기타' };
       list.innerHTML = (!data.history?.length) ? '<div style="padding:14px;color:#555;text-align:center;">없음</div>'
-        : data.history.map(h => `<div class="history-item" onclick="loadHistory('${h.sessionId}')">
-            <div class="name">${h.productName||'(이름없음)'}</div>
-            <div class="meta">${names[h.platform]||h.platform||''} | ${new Date(h.createdAt).toLocaleString('ko-KR')}</div>
+        : data.history.map(h => `<div class="history-item" onclick="loadHistory('${esc(h.sessionId)}')">
+            <div class="name">${esc(h.productName||'(이름없음)')}</div>
+            <div class="meta">${esc(names[h.platform]||h.platform||'')} | ${esc(new Date(h.createdAt).toLocaleString('ko-KR'))}</div>
           </div>`).join('');
       list.classList.add('show');
     }
@@ -800,7 +860,7 @@
 
     function esc(s) { if (!s || s === 'null' || s === 'undefined') return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
 
-    document.getElementById('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') startAnalysis(); });
+    document.getElementById('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') startCrawl(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHtmlEditor(); });
   </script>
 </body>
