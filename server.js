@@ -638,16 +638,20 @@ function cleanupOldSessions() {
   const now = Date.now();
 
   [DIRS.screenshots].forEach(dir => {
-    try {
-      fs.readdirSync(dir).forEach(name => {
+    fs.readdir(dir, (err, names) => {
+      if (err) return;
+      names.forEach(name => {
         const fullPath = path.join(dir, name);
-        const stat = fs.statSync(fullPath);
-        if (stat.isDirectory() && (now - stat.mtimeMs) > maxAge) {
-          fs.rmSync(fullPath, { recursive: true, force: true });
-          console.log(`정리됨: ${fullPath}`);
-        }
+        fs.stat(fullPath, (err, stat) => {
+          if (err) return;
+          if (stat.isDirectory() && (now - stat.mtimeMs) > maxAge) {
+            fs.rm(fullPath, { recursive: true, force: true }, () => {
+              console.log(`정리됨: ${fullPath}`);
+            });
+          }
+        });
       });
-    } catch {}
+    });
   });
 }
 
