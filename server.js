@@ -122,8 +122,17 @@ app.post('/api/crawl', async (req, res) => {
     // 쿠키/팝업 자동 닫기
     await dismissPopups(page);
 
+    // "더보기"/"상세정보" 버튼 클릭하여 숨겨진 콘텐츠 펼치기
+    await expandDetailContent(page, platform);
+
     // 자동 스크롤 (lazy load 이미지 로딩)
     await autoScroll(page);
+
+    // 스크롤 완료 후 이미지 로딩 대기
+    await page.waitForTimeout(2000);
+
+    // iframe 내 상세 이미지가 있으면 메인 페이지에 펼치기
+    await expandIframeContent(page);
 
     // HTML 텍스트 추출
     const pageData = await page.evaluate((platform) => {
@@ -712,18 +721,144 @@ async function autoScroll(page) {
   await page.evaluate(async () => {
     await new Promise((resolve) => {
       let totalHeight = 0;
-      const distance = 500;
+      const distance = 400;
+      let lastScrollHeight = 0;
+      let sameHeightCount = 0;
       const timer = setInterval(() => {
         window.scrollBy(0, distance);
         totalHeight += distance;
-        if (totalHeight >= document.body.scrollHeight || totalHeight > 30000) {
+        const currentScrollHeight = document.body.scrollHeight;
+        // 스크롤이 더 이상 늘어나지 않으면 종료
+        if (currentScrollHeight === lastScrollHeight) {
+          sameHeightCount++;
+        } else {
+          sameHeightCount = 0;
+        }
+        lastScrollHeight = currentScrollHeight;
+        if (sameHeightCount >= 5 || totalHeight > 100000) {
           clearInterval(timer);
           window.scrollTo(0, 0);
           resolve();
         }
-      }, 200);
+      }, 300);
     });
   });
+}
+
+// "더보기"/"상세정보" 버튼 클릭하여 접힌 콘텐츠 펼치기
+async function expandDetailContent(page, platform) {
+  const expandSelectors = [
+    // 공통 더보기/펼치기 버튼
+    '[class*="more"]', '[class*="expand"]', '[class*="unfold"]',
+    '[class*="view-more"]', '[class*="viewMore"]', '[class*="showMore"]',
+    'button[class*="detail"]', '[class*="detail-view"]',
+    // 쿠팡
+    '.product-detail-content-inside .btn-detail-more',
+    '.product-detail__btn--more',
+    // 네이버 스마트스토어
+    '._27fBte5Cxe', '.more-btn', '._1r13ylLJbY',
+    'a[class*="viewMoreBtn"]', 'button[class*="viewMoreBtn"]',
+    // 11번가
+    '.c_product_view_more button', '#productDescription .more',
+    // 와디즈
+    '[class*="campaign-detail"] [class*="more"]',
+    // 일반 "상세정보 더보기"
+    '[data-action="view-more"]', '[data-toggle="detail"]',
+  ];
+
+  for (const sel of expandSelectors) {
+    try {
+      const els = await page.$$(sel);
+      for (const el of els) {
+        if (await el.isVisible()) {
+          const text = await el.textContent().catch(() => '');
+          if (/더보기|펼치기|상세|more|expand|view/i.test(text) || els.length === 1) {
+            await el.click().catch(() => {});
+            await page.waitForTimeout(500);
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 상세정보 탭 클릭 (탭 기반 상세페이지)
+  const tabSelectors = [
+    '[class*="tab"] a', '[class*="tab"] button', '[role="tab"]',
+    '.product-tab li', '.detail-tab li',
+  ];
+  for (const sel of tabSelectors) {
+    try {
+      const tabs = await page.$$(sel);
+      for (const tab of tabs) {
+        const text = await tab.textContent().catch(() => '');
+        if (/상세|설명|detail|description|정보/i.test(text)) {
+          await tab.click().catch(() => {});
+          await page.waitForTimeout(1000);
+          break;
+        }
+      }
+    } catch {}
+  }
+}
+
+// iframe 내 상세 콘텐츠를 메인 페이지에 펼치기
+async function expandIframeContent(page) {
+  try {
+    // iframe 찾기 (쿠팡 vendorItemContentFrame 등)
+    const iframeSelectors = [
+      'iframe[id*="detail"]', 'iframe[id*="content"]', 'iframe[id*="vendor"]',
+      'iframe[name*="detail"]', 'iframe[src*="detail"]',
+      'iframe[class*="detail"]', 'iframe[class*="product"]',
+    ];
+    for (const sel of iframeSelectors) {
+      const iframeEl = await page.$(sel);
+      if (!iframeEl) continue;
+
+      const frame = await iframeEl.contentFrame();
+      if (!frame) continue;
+
+      // iframe 높이를 콘텐츠에 맞게 확장
+      await page.evaluate((selector) => {
+        const iframe = document.querySelector(selector);
+        if (iframe) {
+          iframe.style.height = 'auto';
+          iframe.style.maxHeight = 'none';
+          iframe.style.overflow = 'visible';
+          // 부모 컨테이너도 펼치기
+          let parent = iframe.parentElement;
+          for (let i = 0; i < 5 && parent; i++) {
+            parent.style.maxHeight = 'none';
+            parent.style.overflow = 'visible';
+            parent.style.height = 'auto';
+            parent = parent.parentElement;
+          }
+        }
+      }, sel);
+
+      // iframe 내부 스크롤하여 lazy-load 트리거
+      await frame.evaluate(async () => {
+        const distance = 500;
+        let total = 0;
+        while (total < document.body.scrollHeight && total < 50000) {
+          window.scrollBy(0, distance);
+          total += distance;
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }).catch(() => {});
+
+      // iframe 높이를 실제 콘텐츠 높이로 설정
+      await page.evaluate((selector) => {
+        const iframe = document.querySelector(selector);
+        if (iframe && iframe.contentDocument) {
+          const h = iframe.contentDocument.body.scrollHeight;
+          iframe.style.height = h + 'px';
+        }
+      }, sel).catch(() => {});
+
+      await page.waitForTimeout(1000);
+      break; // 첫 번째 상세 iframe만 처리
+    }
+  } catch {}
 }
 
 // 서버 시작
