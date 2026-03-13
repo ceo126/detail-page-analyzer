@@ -188,7 +188,12 @@
       align-items: center;
       gap: 8px;
       color: #fff;
+      cursor: pointer;
+      user-select: none;
     }
+    .card-title .toggle-arrow { margin-left: auto; font-size: 10px; color: #555; transition: transform 0.2s; }
+    .card.collapsed .card-body { display: none; }
+    .card.collapsed .toggle-arrow { transform: rotate(-90deg); }
     .card-icon {
       width: 24px;
       height: 24px;
@@ -404,6 +409,30 @@
     /* 단축키 힌트 */
     .shortcut-hint { font-size: 10px; color: #444; margin-left: 4px; }
     kbd { background: #252830; border: 1px solid #2d3140; border-radius: 3px; padding: 0 4px; font-size: 10px; color: #666; }
+
+    /* 요약 카드 */
+    .summary-card {
+      background: linear-gradient(135deg, #1a1d27 0%, #1f2233 100%);
+      border: 1px solid #2d3140;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .score-ring { position: relative; width: 64px; height: 64px; flex-shrink: 0; }
+    .score-ring svg { transform: rotate(-90deg); }
+    .score-ring .score-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; }
+    .summary-info { flex: 1; min-width: 0; }
+    .summary-info .product-name { font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .summary-info .summary-meta { font-size: 12px; color: #888; display: flex; gap: 12px; flex-wrap: wrap; }
+    .summary-info .summary-meta span { display: flex; align-items: center; gap: 4px; }
+
+    /* 생성 이력 */
+    .gen-history-item { display:flex; align-items:center; gap:8px; padding:8px 10px; background:#252830; border-radius:6px; margin-bottom:6px; cursor:pointer; font-size:12px; }
+    .gen-history-item:hover { background:#2d3140; }
+    .gen-history-item .time { color:#555; margin-left:auto; white-space:nowrap; }
   </style>
 </head>
 <body>
@@ -484,8 +513,18 @@
           <div id="genNotice" class="card" style="border-color:#f59e0b; display:none;">
             <div style="color:#f59e0b; font-size:13px;">먼저 URL을 크롤링하고 AI 분석을 완료해야 생성할 수 있습니다.</div>
           </div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+            <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#888; cursor:pointer;">
+              <input type="checkbox" id="useOriginalImages" checked style="accent-color:#3b82f6;">
+              크롤링한 원본 이미지를 생성 HTML에 자동 삽입
+            </label>
+          </div>
           <div class="label">추가 요청사항 (선택)</div>
           <textarea class="gen-textarea" id="editInstructions" placeholder="예: 가격을 39,000원으로 / 후기 섹션 추가 / 톤을 더 고급스럽게"></textarea>
+          <div id="genHistoryArea" style="display:none;">
+            <div class="label" style="margin-top:8px;">생성 이력</div>
+            <div id="genHistoryList"></div>
+          </div>
         </div>
         <!-- 미리보기 탭 -->
         <div class="tab-panel" id="tab-preview">
@@ -798,29 +837,54 @@
         <span style="margin-left:auto; font-size:11px; color:#555;">${new Date().toLocaleTimeString('ko-KR')}</span>
       </div>`;
 
+      // 요약 카드
+      const score = a.overall?.score || 0;
+      const sc = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
+      const circumference = 2 * Math.PI * 26;
+      const dashOffset = circumference * (1 - score / 100);
+      h += `<div class="summary-card">
+        <div class="score-ring">
+          <svg width="64" height="64" viewBox="0 0 64 64">
+            <circle cx="32" cy="32" r="26" fill="none" stroke="#1f2233" stroke-width="5"/>
+            <circle cx="32" cy="32" r="26" fill="none" stroke="${sc}" stroke-width="5"
+              stroke-dasharray="${circumference}" stroke-dashoffset="${dashOffset}" stroke-linecap="round"/>
+          </svg>
+          <div class="score-text" style="color:${sc};">${score}</div>
+        </div>
+        <div class="summary-info">
+          <div class="product-name">${esc(a.product?.name || '분석 완료')}</div>
+          <div class="summary-meta">
+            ${a.product?.price ? `<span>${esc(a.product.price)}</span>` : ''}
+            ${a.product?.brand ? `<span>${esc(a.product.brand)}</span>` : ''}
+            ${a.product?.category ? `<span>${esc(a.product.category)}</span>` : ''}
+            ${a.structure ? `<span>${a.structure.length}개 섹션</span>` : ''}
+          </div>
+        </div>
+      </div>`;
+
       // 제품 정보
       if (a.product) {
         const p = a.product;
-        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#1e3a5f;color:#3b82f6;">P</span>제품 정보</div>
+        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#1e3a5f;color:#3b82f6;">P</span>제품 정보<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           ${row('제품명', p.name)}${row('가격', p.price)}${row('원가', p.originalPrice)}${row('할인율', p.discountRate)}
           ${row('카테고리', p.category)}${row('브랜드', p.brand)}${row('옵션', p.options)}
-        </div>`;
+        </div></div>`;
       }
 
       // 디자인
       if (a.design) {
         const d = a.design;
-        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#2d1f4e;color:#8b5cf6;">D</span>디자인 분석</div>
+        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#2d1f4e;color:#8b5cf6;">D</span>디자인 분석<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           ${row('톤', d.tone)}${row('폰트', d.fontStyle)}${row('이미지 스타일', d.imageStyle)}${row('완성도', d.overallQuality)}
           <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">컬러</span>
             <div class="colors">${(d.mainColors||[]).map(c=>`<div class="color-dot" style="background:${esc(c)}" title="${esc(c)}"></div>`).join('')}</div>
           </div>
-        </div>`;
+        </div></div>`;
       }
 
       // 페이지 구조
       if (a.structure && a.structure.length) {
-        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#1a3d2e;color:#10b981;">S</span>페이지 구조 (${a.structure.length}개 섹션)</div>
+        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#1a3d2e;color:#10b981;">S</span>페이지 구조 (${a.structure.length}개 섹션)<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           <div class="section-list">${a.structure.map((s,i) => `
             <div class="section-item">
               <div class="sec-name">${i+1}. ${esc(s.section)}</div>
@@ -828,53 +892,49 @@
               ${s.visualElements ? `<div class="sec-visual">${esc(s.visualElements)}</div>` : ''}
             </div>`).join('')}
           </div>
-        </div>`;
+        </div></div>`;
       }
 
       // 카피라이팅
       if (a.copywriting) {
         const c = a.copywriting;
-        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#3d2e1a;color:#f59e0b;">C</span>카피라이팅</div>
+        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#3d2e1a;color:#f59e0b;">C</span>카피라이팅<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           ${row('헤드라인 스타일', c.headlineStyle)}${row('어조', c.toneOfVoice)}${row('CTA', c.callToAction)}
           ${c.headlines && c.headlines.length ? `<div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">실제 헤드라인</span><div class="tags">${c.headlines.map(t=>`<span class="tag yellow">${esc(t)}</span>`).join('')}</div></div>` : ''}
           <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">핵심 문구</span><div class="tags">${(c.keyPhrases||[]).map(t=>`<span class="tag blue">${esc(t)}</span>`).join('')}</div></div>
           <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">셀링 포인트</span><div class="tags">${(c.sellingPoints||[]).map(t=>`<span class="tag green">${esc(t)}</span>`).join('')}</div></div>
-        </div>`;
+        </div></div>`;
       }
 
       // 타겟
       if (a.target) {
         const t = a.target;
-        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#1a2d3d;color:#06b6d4;">T</span>타겟 분석</div>
+        h += `<div class="card collapsed"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#1a2d3d;color:#06b6d4;">T</span>타겟 분석<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           ${row('타겟', t.audience)}${row('연령대', t.ageRange)}
           <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">고민</span><div class="tags">${(t.painPoints||[]).map(p=>`<span class="tag">${esc(p)}</span>`).join('')}</div></div>
           <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">혜택</span><div class="tags">${(t.benefits||[]).map(p=>`<span class="tag blue">${esc(p)}</span>`).join('')}</div></div>
           ${t.useCases ? `<div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">사용 시나리오</span><div class="tags">${(t.useCases||[]).map(p=>`<span class="tag green">${esc(p)}</span>`).join('')}</div></div>` : ''}
-        </div>`;
+        </div></div>`;
       }
 
       // 소셜 프루프
       if (a.socialProof) {
         const sp = a.socialProof;
-        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#2d2d1a;color:#eab308;">!</span>신뢰 요소</div>
+        h += `<div class="card collapsed"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#2d2d1a;color:#eab308;">!</span>신뢰 요소<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           ${row('리뷰/후기', sp.reviews)}${row('판매/펀딩', sp.salesCount)}${row('인증/수상', sp.certifications)}
           ${sp.trustElements ? `<div style="margin-top:8px;"><div class="tags">${(sp.trustElements||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div>` : ''}
-        </div>`;
+        </div></div>`;
       }
 
       // 종합 평가
       if (a.overall) {
         const o = a.overall;
-        const score = o.score || 0;
-        const sc = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
-        h += `<div class="card"><div class="card-title"><span class="card-icon" style="background:#1f1a3d;color:#a78bfa;">R</span>종합 평가</div>
-          <div class="score-badge" style="border:3px solid ${sc}; color:${sc};">${score}</div>
+        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#1f1a3d;color:#a78bfa;">R</span>종합 평가<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           <p style="font-size:13px; color:#aaa; line-height:1.6; margin-bottom:10px;">${esc(o.summary)}</p>
-          <div style="clear:both;"></div>
           <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">장점</span><div class="tags">${(o.strengths||[]).map(s=>`<span class="tag green">${esc(s)}</span>`).join('')}</div></div>
           <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">개선점</span><div class="tags">${(o.weaknesses||[]).map(s=>`<span class="tag">${esc(s)}</span>`).join('')}</div></div>
           ${o.improvementSuggestions ? `<div style="margin-top:10px;"><span class="row-label" style="font-size:12px;">개선 제안</span>${(o.improvementSuggestions||[]).map(s=>`<div class="suggestion-item">${esc(s)}</div>`).join('')}</div>` : ''}
-        </div>`;
+        </div></div>`;
       }
 
       el.innerHTML = h;
@@ -888,13 +948,17 @@
     // ============================================================
     // 생성
     // ============================================================
+    let generationHistory = [];
+
     async function generatePage() {
       if (!currentAnalysis) return showToast('먼저 분석하세요', 'error');
       const keyword = document.getElementById('keywordInput').value.trim();
+      const useOriginalImages = document.getElementById('useOriginalImages').checked;
       const btn = document.getElementById('btnGenerate');
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span>생성 중... (10~20초 소요)';
       setProgress(true, 30, '상세페이지 생성 중...');
+      const genStart = Date.now();
       // 이전 JPG 결과 초기화
       document.getElementById('jpgResult').style.display = 'none';
       try {
@@ -905,6 +969,7 @@
             analysis: currentAnalysis,
             keyword: keyword || null,
             sessionId: currentSessionId,
+            useOriginalImages,
             userEdits: document.getElementById('editInstructions').value.trim() || null
           })
         });
@@ -917,9 +982,42 @@
         updatePreview(data.html);
         setProgress(true, 100, '완료');
         setTimeout(() => setProgress(false), 800);
-        showToast('생성 완료' + (keyword ? ` (${keyword})` : ''), 'success');
+        const genSec = ((Date.now() - genStart) / 1000).toFixed(1);
+        showToast(`생성 완료 (${genSec}초)` + (keyword ? ` — ${keyword}` : ''), 'success');
+        // 생성 이력 추가
+        generationHistory.unshift({
+          outputId: data.outputId,
+          html: data.html,
+          keyword: keyword || '원본',
+          time: new Date().toLocaleTimeString('ko-KR'),
+          sec: genSec
+        });
+        renderGenHistory();
       } catch (err) { showToast(err.message, 'error'); setProgress(false); }
       finally { btn.disabled = false; btn.textContent = '생성'; }
+    }
+
+    function renderGenHistory() {
+      const area = document.getElementById('genHistoryArea');
+      const list = document.getElementById('genHistoryList');
+      if (generationHistory.length <= 1) { area.style.display = 'none'; return; }
+      area.style.display = 'block';
+      list.innerHTML = generationHistory.map((g, i) => `
+        <div class="gen-history-item" onclick="loadGenHistory(${i})" ${i === 0 ? 'style="border-left:3px solid #3b82f6;"' : ''}>
+          <span style="color:${i===0?'#3b82f6':'#888'};">${i === 0 ? '현재' : `#${generationHistory.length - i}`}</span>
+          <span style="color:#e1e4e8;">${esc(g.keyword)}</span>
+          <span class="time">${g.time} (${g.sec}초)</span>
+        </div>`).join('');
+    }
+
+    function loadGenHistory(idx) {
+      const g = generationHistory[idx];
+      if (!g) return;
+      currentHtml = g.html;
+      currentOutputId = g.outputId;
+      switchTab('preview');
+      updatePreview(g.html);
+      showToast(`"${g.keyword}" 생성물 불러옴`, 'success');
     }
 
     function updatePreview(html) {
@@ -1246,6 +1344,10 @@
         const dot = document.getElementById('statusDot');
         dot.style.background = data.status === 'ok' ? '#10b981' : '#ef4444';
         dot.title = `서버 정상 | 메모리: ${data.memory} | 업타임: ${Math.floor(data.uptime/60)}분 | 크롤링: ${data.activeCrawls || 0}/${2}`;
+        if (!data.geminiConfigured) {
+          dot.style.background = '#f59e0b';
+          dot.title += ' | Gemini API 키 미설정!';
+        }
       } catch { document.getElementById('statusDot').style.background = '#ef4444'; }
     }
     checkHealth();

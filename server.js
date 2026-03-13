@@ -787,13 +787,32 @@ ${pageData ? `\n추가 추출 텍스트:\n- 제품명: ${pageData.productName ||
 // 3) 분석 결과 기반 상세페이지 HTML 생성
 // ============================================================
 app.post('/api/generate', withTimeout(120000), async (req, res) => {
-  const { analysis, userEdits, keyword, sessionId: reqSessionId } = req.body;
+  const { analysis, userEdits, keyword, sessionId: reqSessionId, useOriginalImages } = req.body;
   if (!analysis) return res.status(400).json({ error: '분석 데이터 필요' });
   if (keyword && keyword.length > 200) return res.status(400).json({ error: '키워드는 200자 이하로 입력하세요' });
   if (userEdits && userEdits.length > 1000) return res.status(400).json({ error: '추가 요청사항은 1000자 이하로 입력하세요' });
 
   try {
     const editInstructions = userEdits ? `\n\n추가 요청사항:\n${userEdits}` : '';
+
+    // 크롤링한 원본 이미지 URL 수집
+    let originalImageUrls = [];
+    if (useOriginalImages && reqSessionId && isValidSessionId(reqSessionId)) {
+      const historyFile = path.join(DIRS.history, `${reqSessionId}.json`);
+      if (fs.existsSync(historyFile)) {
+        try {
+          const histData = JSON.parse(fs.readFileSync(historyFile, 'utf-8'));
+          // 다운로드된 이미지의 로컬 서빙 경로 수집
+          const imgDir = path.join(DIRS.screenshots, reqSessionId, 'images');
+          if (fs.existsSync(imgDir)) {
+            originalImageUrls = fs.readdirSync(imgDir)
+              .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f))
+              .sort()
+              .map(f => `/screenshots/${reqSessionId}/images/${f}`);
+          }
+        } catch {}
+      }
+    }
 
     // 원본 스크린샷을 Vision에 같이 전달 (구조 복제 정확도 향상)
     let imageParts = [];
@@ -850,7 +869,9 @@ ${editInstructions}
 4. 원본의 디자인 톤, 컬러, 폰트 스타일을 **정확히** 반영
 5. ${keyword ? `"${keyword}" 상품에 맞는 매력적인 카피라이팅` : '분석된 카피라이팅 스타일 반영'}
 6. 셀링 포인트를 시각적으로 효과적으로 강조
-7. 이미지 영역은 플레이스홀더 (회색 박스 + "이미지 영역", data-placeholder-id="1","2"... 속성)
+7. ${originalImageUrls.length > 0
+        ? `이미지 영역에는 아래 원본 이미지 URL을 <img src="URL"> 태그로 삽입하세요 (순서대로 배치):\n${originalImageUrls.map((u,i) => `   ${i+1}. ${u}`).join('\n')}\n   남는 영역은 플레이스홀더 (회색 박스 + data-placeholder-id 속성)`
+        : '이미지 영역은 플레이스홀더 (회색 박스 + "이미지 영역", data-placeholder-id="1","2"... 속성)'}
 8. 모든 텍스트 한국어
 9. inline CSS만 사용 (외부 CSS 없음)
 10. 배경색, 구분선, 그라데이션, 아이콘(이모지) 등으로 시각적으로 풍성하게
@@ -1048,6 +1069,7 @@ app.get('/api/health', (req, res) => {
     uptime: process.uptime(),
     browserConnected: !!(browser && browser.isConnected()),
     activeCrawls,
+    geminiConfigured: !!process.env.GEMINI_API_KEY,
     memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB'
   });
 });
