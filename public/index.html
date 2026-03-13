@@ -111,6 +111,14 @@
     .platform-badge.naver { background: #1a4d2e; color: #4ade80; }
     .platform-badge.wadiz { background: #2d2766; color: #a78bfa; }
     .platform-badge.musinsa { background: #1a1a2e; color: #818cf8; }
+    .platform-badge[class*="11st"] { background: #3d1a1a; color: #ff6b6b; }
+    .platform-badge.gmarket { background: #1a3d1a; color: #4ade80; }
+    .platform-badge.auction { background: #3d2d1a; color: #fbbf24; }
+    .platform-badge.tmon { background: #3d1a2d; color: #f472b6; }
+    .platform-badge.wemakeprice { background: #1a2d3d; color: #38bdf8; }
+    .platform-badge.aliexpress { background: #3d2d1a; color: #fb923c; }
+    .platform-badge.ohouse { background: #1a3d3d; color: #2dd4bf; }
+    .platform-badge.idus { background: #2d1a3d; color: #c084fc; }
     .platform-badge.other { background: #333; color: #999; }
 
     .screenshot-scroll {
@@ -383,6 +391,19 @@
     }
 
     .label { font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #aaa; }
+
+    /* 스켈레톤 로딩 */
+    .skeleton {
+      background: linear-gradient(90deg, #1a1d27 25%, #2a2d37 50%, #1a1d27 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 6px;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* 단축키 힌트 */
+    .shortcut-hint { font-size: 10px; color: #444; margin-left: 4px; }
+    kbd { background: #252830; border: 1px solid #2d3140; border-radius: 3px; padding: 0 4px; font-size: 10px; color: #666; }
   </style>
 </head>
 <body>
@@ -390,6 +411,7 @@
   <div class="header">
     <h1>상세페이지 분석기</h1>
     <span class="badge">Gemini Vision</span>
+    <span id="statusDot" style="width:8px; height:8px; border-radius:50%; background:#10b981; display:inline-block;" title="서버 연결됨"></span>
     <div class="url-bar">
       <input type="text" id="urlInput" placeholder="분석할 상세페이지 URL (쿠팡, 네이버, 와디즈, 자사몰 등)">
       <button class="btn-analyze" id="btnCrawl" onclick="startCrawl()">이미지 가져오기</button>
@@ -415,6 +437,7 @@
       <div class="panel-header">
         <span>원본 페이지</span>
         <span class="platform-badge" id="platformBadge" style="display:none"></span>
+        <button id="btnRecrawl" style="display:none; background:#252830; border:1px solid #2d3140; color:#888; padding:3px 10px; border-radius:4px; font-size:11px; cursor:pointer;" onclick="startCrawl()">재수집</button>
         <span id="progressText" style="margin-left:auto; font-size:12px; color:#555;"></span>
       </div>
       <div class="screenshot-scroll" id="screenshotArea">
@@ -466,6 +489,7 @@
             <button class="btn btn-gray btn-sm" onclick="switchTab('generate')">다시 생성</button>
             <button class="btn btn-gray btn-sm" onclick="editHtml()">HTML 편집</button>
             <button class="btn btn-gray btn-sm" onclick="exportAnalysisJson()">JSON 저장</button>
+            <button class="btn btn-gray btn-sm" id="btnCompare" onclick="toggleCompare()" style="display:none;">원본 비교</button>
             <button class="btn btn-green btn-sm" id="btnExportJpg" onclick="exportJpg(this)" style="margin-left:auto;">JPG 내보내기</button>
           </div>
           <div class="preview-wrap">
@@ -534,11 +558,9 @@
       const btnCrawl = document.getElementById('btnCrawl');
       const btnAnalyze = document.getElementById('btnAnalyze');
       btnCrawl.disabled = true;
-      btnCrawl.innerHTML = '<span class="spinner"></span>가져오는 중...';
+      btnCrawl.innerHTML = '<span class="spinner"></span>연결 중...';
       btnAnalyze.style.display = 'none';
-      setProgress(true, 15, '페이지 크롤링 중...');
 
-      // 분석 결과 초기화
       currentAnalysis = null;
       currentSessionId = null;
       currentPageData = null;
@@ -549,6 +571,38 @@
           <div>이미지를 확인한 후 "AI 분석" 버튼을 눌러주세요</div>
         </div>`;
 
+      // SSE 기반 실시간 진행률
+      const eventSource = new EventSource(`/api/crawl-sse?url=${encodeURIComponent(url)}`);
+      let sseWorked = false;
+
+      eventSource.onmessage = (event) => {
+        sseWorked = true;
+        const data = JSON.parse(event.data);
+        if (data.type === 'progress') {
+          setProgress(true, data.percent, data.message);
+          btnCrawl.innerHTML = `<span class="spinner"></span>${data.message}`;
+        } else if (data.type === 'complete') {
+          eventSource.close();
+          onCrawlSuccess(data);
+        } else if (data.type === 'error') {
+          eventSource.close();
+          showToast(data.message, 'error');
+          setProgress(false);
+          btnCrawl.disabled = false;
+          btnCrawl.textContent = '이미지 가져오기';
+        }
+      };
+
+      eventSource.onerror = () => {
+        eventSource.close();
+        if (!sseWorked) startCrawlFallback(url);
+      };
+    }
+
+    // SSE 실패 시 기존 POST 방식 폴백
+    async function startCrawlFallback(url) {
+      const btnCrawl = document.getElementById('btnCrawl');
+      setProgress(true, 30, '크롤링 중... (폴백 모드)');
       try {
         const crawlRes = await fetch('/api/crawl', {
           method: 'POST',
@@ -557,17 +611,7 @@
         });
         const crawl = await crawlRes.json();
         if (!crawl.success) throw new Error(crawl.error);
-
-        currentSessionId = crawl.sessionId;
-        currentPageData = crawl.pageData;
-        renderScreenshots(crawl);
-        setProgress(true, 100, `이미지 ${crawl.screenshotCount}장 캡처 완료`);
-        setTimeout(() => setProgress(false), 1500);
-        showToast(`${crawl.screenshotCount}장 캡처 완료 — "AI 분석" 버튼을 눌러 분석하세요`, 'success');
-
-        // AI 분석 버튼 표시
-        btnAnalyze.style.display = 'inline-flex';
-        switchTab('analysis');
+        onCrawlSuccess(crawl);
       } catch (err) {
         showToast(err.message, 'error');
         setProgress(false);
@@ -575,6 +619,24 @@
         btnCrawl.disabled = false;
         btnCrawl.textContent = '이미지 가져오기';
       }
+    }
+
+    function onCrawlSuccess(crawl) {
+      const btnCrawl = document.getElementById('btnCrawl');
+      const btnAnalyze = document.getElementById('btnAnalyze');
+      currentSessionId = crawl.sessionId;
+      currentPageData = crawl.pageData;
+      window._screenshotCount = crawl.screenshotCount;
+      renderScreenshots(crawl);
+      setProgress(true, 100, `이미지 ${crawl.screenshotCount}장 캡처 완료`);
+      setTimeout(() => setProgress(false), 1500);
+      showToast(`${crawl.screenshotCount}장 캡처 — "AI 분석" 버튼을 눌러주세요`, 'success');
+      btnAnalyze.style.display = 'inline-flex';
+      btnCrawl.disabled = false;
+      btnCrawl.textContent = '이미지 가져오기';
+      document.getElementById('btnRecrawl').style.display = 'inline-block';
+      document.getElementById('btnCompare').style.display = 'inline-block';
+      switchTab('analysis');
     }
 
     // ============================================================
@@ -587,6 +649,20 @@
       btnAnalyze.disabled = true;
       btnAnalyze.innerHTML = '<span class="spinner"></span>AI 분석 중...';
       setProgress(true, 30, 'Gemini AI 분석 중...');
+
+      // 스켈레톤 로딩
+      document.getElementById('analysisContent').innerHTML = `
+        <div class="card"><div class="skeleton" style="height:20px;width:40%;margin-bottom:12px;"></div>
+          <div class="skeleton" style="height:14px;width:100%;margin-bottom:8px;"></div>
+          <div class="skeleton" style="height:14px;width:80%;margin-bottom:8px;"></div>
+          <div class="skeleton" style="height:14px;width:60%;"></div></div>
+        <div class="card"><div class="skeleton" style="height:20px;width:50%;margin-bottom:12px;"></div>
+          <div class="skeleton" style="height:14px;width:90%;margin-bottom:8px;"></div>
+          <div class="skeleton" style="height:14px;width:70%;"></div></div>
+        <div class="card"><div class="skeleton" style="height:20px;width:35%;margin-bottom:12px;"></div>
+          <div class="skeleton" style="height:60px;width:100%;margin-bottom:8px;"></div>
+          <div class="skeleton" style="height:60px;width:100%;margin-bottom:8px;"></div>
+          <div class="skeleton" style="height:60px;width:100%;"></div></div>`;
 
       try {
         const analyzeRes = await fetch('/api/analyze', {
@@ -659,7 +735,7 @@
       area.innerHTML = html;
 
       const badge = document.getElementById('platformBadge');
-      const names = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', ohouse:'오늘의집', other:'기타' };
+      const names = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', ohouse:'오늘의집', '11st':'11번가', gmarket:'G마켓', auction:'옥션', tmon:'티몬', wemakeprice:'위메프', aliexpress:'알리', idus:'아이디어스', other:'기타' };
       badge.textContent = names[crawl.platform] || crawl.platform;
       badge.className = 'platform-badge ' + crawl.platform;
       badge.style.display = 'inline-flex';
@@ -670,7 +746,11 @@
     // ============================================================
     function renderAnalysis(a) {
       const el = document.getElementById('analysisContent');
-      let h = '';
+      let h = `<div style="display:flex; gap:8px; margin-bottom:12px; align-items:center;">
+        <button class="btn btn-gray btn-sm" onclick="startAnalyze()" style="font-size:11px;">재분석</button>
+        <button class="btn btn-gray btn-sm" onclick="startCrawl()" style="font-size:11px;">재수집</button>
+        <span style="margin-left:auto; font-size:11px; color:#555;">${new Date().toLocaleTimeString('ko-KR')}</span>
+      </div>`;
 
       // 제품 정보
       if (a.product) {
@@ -877,16 +957,92 @@
       document.getElementById('progressText').textContent = text || '';
     }
 
+    let toastTimer = null;
     function showToast(msg, type) {
-      const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast ' + (type||'');
+      const t = document.getElementById('toast');
+      if (toastTimer) clearTimeout(toastTimer);
+      t.textContent = msg; t.className = 'toast ' + (type||'');
       requestAnimationFrame(() => t.classList.add('show'));
-      setTimeout(() => t.classList.remove('show'), 3000);
+      toastTimer = setTimeout(() => { t.classList.remove('show'); toastTimer = null; }, 3000);
     }
 
     function esc(s) { if (!s || s === 'null' || s === 'undefined') return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
 
+    // 원본 비교 모드
+    let compareMode = false;
+    function toggleCompare() {
+      compareMode = !compareMode;
+      const btn = document.getElementById('btnCompare');
+      const wrap = document.querySelector('.preview-wrap');
+      if (compareMode && currentSessionId) {
+        btn.textContent = '비교 닫기';
+        btn.style.background = '#3b82f6'; btn.style.color = '#fff'; btn.style.borderColor = '#3b82f6';
+        wrap.innerHTML = `
+          <div style="display:flex; gap:2px; width:100%;">
+            <div style="flex:1; max-height:800px; overflow-y:auto; background:#f5f5f5; padding:4px;">
+              <div style="font-size:11px; color:#999; text-align:center; padding:4px;">원본</div>
+              <div id="compareOriginal"></div>
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:11px; color:#999; text-align:center; padding:4px;">생성</div>
+              <iframe id="previewFrame" style="width:100%; min-height:800px; border:none;"></iframe>
+            </div>
+          </div>`;
+        const origDiv = document.getElementById('compareOriginal');
+        for (let i = 0; i < (window._screenshotCount || 5); i++) {
+          const img = document.createElement('img');
+          img.src = `/screenshots/${currentSessionId}/screenshot_${i}.jpg`;
+          img.style.cssText = 'width:100%; display:block;';
+          img.onerror = function() { this.remove(); };
+          origDiv.appendChild(img);
+        }
+        if (currentHtml) updatePreview(currentHtml);
+      } else {
+        btn.textContent = '원본 비교';
+        btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = '';
+        wrap.innerHTML = '<iframe id="previewFrame" style="width:860px; min-height:800px; border:none;"></iframe>';
+        if (currentHtml) updatePreview(currentHtml);
+      }
+    }
+
+    // URL 입력 Enter
     document.getElementById('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') startCrawl(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHtmlEditor(); });
+
+    // URL 붙여넣기 자동 시작
+    document.getElementById('urlInput').addEventListener('paste', () => {
+      setTimeout(() => {
+        const val = document.getElementById('urlInput').value.trim();
+        if (val && val.startsWith('http') && !currentSessionId) startCrawl();
+      }, 300);
+    });
+
+    // 키보드 단축키
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') return closeHtmlEditor();
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        if (currentSessionId && !currentAnalysis) startAnalyze();
+        else startCrawl();
+      }
+      if (e.ctrlKey && e.key === 'g') { e.preventDefault(); generatePage(); }
+      if (e.altKey && e.key === '1') switchTab('analysis');
+      if (e.altKey && e.key === '2') switchTab('generate');
+      if (e.altKey && e.key === '3') switchTab('preview');
+    });
+
+    // 서버 상태 체크
+    async function checkHealth() {
+      try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        const dot = document.getElementById('statusDot');
+        dot.style.background = data.status === 'ok' ? '#10b981' : '#ef4444';
+        dot.title = `서버 정상 | 메모리: ${data.memory} | 업타임: ${Math.floor(data.uptime/60)}분`;
+      } catch { document.getElementById('statusDot').style.background = '#ef4444'; }
+    }
+    checkHealth();
+    setInterval(checkHealth, 30000);
   </script>
 </body>
 </html>

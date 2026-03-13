@@ -13,7 +13,23 @@ const PORT = process.env.PORT || 8150;
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 app.use(express.json({ limit: '50mb' }));
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
+
+// 요청 타임아웃 미들웨어
+function withTimeout(ms) {
+  return (req, res, next) => {
+    res.setTimeout(ms, () => {
+      if (!res.headersSent) res.status(504).json({ error: '요청 시간이 초과되었습니다.' });
+    });
+    next();
+  };
+}
 
 // 디렉토리 생성
 const DIRS = {
@@ -119,32 +135,28 @@ async function callGemini(prompt, imageParts = [], maxRetries = 2) {
   throw lastError;
 }
 
-// ============================================================
-// 1) URL에서 상세페이지 크롤링 + 스크린샷
-// ============================================================
-app.post('/api/crawl', async (req, res) => {
-  const { url } = req.body;
-  if (!url) return res.status(400).json({ error: 'URL이 필요합니다' });
-
-  // URL 유효성 검사
+// URL 검증
+function validateUrl(url) {
+  if (!url) return 'URL이 필요합니다';
   try {
     const parsed = new URL(url);
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return res.status(400).json({ error: '올바른 URL 형식이 아닙니다' });
-    }
-    // 내부 네트워크 접근 차단
+    if (!['http:', 'https:'].includes(parsed.protocol)) return '올바른 URL 형식이 아닙니다';
     const hostname = parsed.hostname;
     if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0' || hostname === '::1' ||
         hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('169.254.') ||
-        /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) {
-      return res.status(400).json({ error: '내부 네트워크 URL은 접근할 수 없습니다' });
-    }
-  } catch {
-    return res.status(400).json({ error: '올바른 URL 형식이 아닙니다' });
-  }
+        /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return '내부 네트워크 URL은 접근할 수 없습니다';
+    return null;
+  } catch { return '올바른 URL 형식이 아닙니다'; }
+}
 
+// ============================================================
+// 크롤링 핵심 로직 (POST, SSE 공용)
+// ============================================================
+async function crawlPage(url, onProgress) {
+  const notify = onProgress || (() => {});
   let context = null;
   try {
+    notify('connecting', '브라우저 시작 중...', 5);
     const b = await getBrowser();
     context = await createStealthContext(b);
     const page = await context.newPage();
@@ -183,6 +195,7 @@ app.post('/api/crawl', async (req, res) => {
     });
 
     // 페이지 로딩
+    notify('loading', '페이지 로딩 중...', 15);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.waitForTimeout(3000);
@@ -210,14 +223,14 @@ app.post('/api/crawl', async (req, res) => {
     await dismissPopups(page);
 
     // "더보기"/"상세정보" 버튼 클릭하여 숨겨진 콘텐츠 펼치기
+    notify('expanding', '콘텐츠 펼치는 중...', 35);
     await expandDetailContent(page, platform);
 
     // iframe 내 상세 이미지가 있으면 메인 페이지에 펼치기
     await expandIframeContent(page);
 
-    // ============================================================
     // 1단계: 전체 스크롤하여 lazy-load 콘텐츠 모두 로딩
-    // ============================================================
+    notify('scrolling', '전체 스크롤 중 (lazy-load)...', 45);
     await autoScroll(page);
     await page.waitForTimeout(2000);
 
@@ -260,6 +273,7 @@ app.post('/api/crawl', async (req, res) => {
     const containerSel = scrollInfo.scrollContainer;
 
     // 맨 위로 이동
+    notify('capturing', '스크린샷 캡처 중...', 55);
     await page.evaluate((sel) => {
       if (sel) {
         const el = document.querySelector(sel);
@@ -479,6 +493,7 @@ app.post('/api/crawl', async (req, res) => {
     fs.mkdirSync(imageDir, { recursive: true });
 
     // 페이지에서 직접 이미지를 fetch (같은 세션 쿠키 공유)
+    notify('downloading', `이미지 다운로드 중 (${pageData.images.length}개)...`, 80);
     const downloadPromises = pageData.images.slice(0, 30).map(async (imgUrl, idx) => {
       try {
         const result = await page.evaluate(async (url) => {
@@ -510,9 +525,10 @@ app.post('/api/crawl', async (req, res) => {
     });
     await Promise.all(downloadPromises);
 
+    notify('complete', '크롤링 완료', 100);
     console.log(`크롤링 완료: 스크린샷 ${numChunks}장, 이미지 ${downloadedImages.length}개 다운로드, 전체 높이 ${totalHeight}px`);
 
-    res.json({
+    return {
       success: true,
       sessionId,
       platform,
@@ -520,20 +536,65 @@ app.post('/api/crawl', async (req, res) => {
       screenshotCount: numChunks,
       totalHeight,
       downloadedImages
-    });
+    };
   } catch (err) {
     console.error('크롤링 오류:', err);
     const msg = err.message?.includes('timeout') ? '페이지 로딩 시간 초과. 다시 시도해주세요.' : '크롤링 중 오류가 발생했습니다.';
-    res.status(500).json({ error: msg });
+    throw new Error(msg);
   } finally {
     if (context) await context.close().catch(() => {});
+  }
+}
+
+// ============================================================
+// 1) URL에서 상세페이지 크롤링 + 스크린샷 (POST)
+// ============================================================
+app.post('/api/crawl', withTimeout(120000), async (req, res) => {
+  const { url } = req.body;
+  const err = validateUrl(url);
+  if (err) return res.status(400).json({ error: err });
+  try {
+    const result = await crawlPage(url);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// 1-b) 크롤링 SSE (실시간 진행률)
+// ============================================================
+app.get('/api/crawl-sse', async (req, res) => {
+  const url = req.query.url;
+  const err = validateUrl(url);
+  if (err) {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    res.write(`data: ${JSON.stringify({ type: 'error', message: err })}\n\n`);
+    return res.end();
+  }
+
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+
+  const send = (type, message, percent) => {
+    if (!res.writableEnded) res.write(`data: ${JSON.stringify({ type, message, percent })}\n\n`);
+  };
+
+  try {
+    const result = await crawlPage(url, (step, message, percent) => {
+      send('progress', message, percent);
+    });
+    res.write(`data: ${JSON.stringify({ type: 'complete', ...result })}\n\n`);
+  } catch (e) {
+    send('error', e.message, 0);
+  } finally {
+    res.end();
   }
 });
 
 // ============================================================
 // 2) Gemini Vision으로 상세페이지 분석
 // ============================================================
-app.post('/api/analyze', async (req, res) => {
+app.post('/api/analyze', withTimeout(120000), async (req, res) => {
   const { sessionId, pageData } = req.body;
   if (!sessionId || !isValidSessionId(sessionId)) return res.status(400).json({ error: '유효하지 않은 sessionId' });
 
@@ -672,7 +733,7 @@ ${pageData ? `\n추가 추출 텍스트:\n- 제품명: ${pageData.productName ||
 // ============================================================
 // 3) 분석 결과 기반 상세페이지 HTML 생성
 // ============================================================
-app.post('/api/generate', async (req, res) => {
+app.post('/api/generate', withTimeout(120000), async (req, res) => {
   const { analysis, userEdits, keyword, sessionId: reqSessionId } = req.body;
   if (!analysis) return res.status(400).json({ error: '분석 데이터 필요' });
   if (keyword && keyword.length > 200) return res.status(400).json({ error: '키워드는 200자 이하로 입력하세요' });
@@ -778,7 +839,7 @@ ${editInstructions}
 // ============================================================
 // 4) HTML → 긴 JPG 이미지 변환
 // ============================================================
-app.post('/api/export-jpg', async (req, res) => {
+app.post('/api/export-jpg', withTimeout(180000), async (req, res) => {
   const { html, outputId } = req.body;
   if (!html) return res.status(400).json({ error: 'HTML 필요' });
   if (outputId && !/^[\w\-]+$/.test(outputId)) return res.status(400).json({ error: '유효하지 않은 outputId' });
@@ -820,7 +881,7 @@ app.post('/api/export-jpg', async (req, res) => {
     console.error('JPG 변환 오류:', err);
     res.status(500).json({ error: 'JPG 변환 중 오류가 발생했습니다.' });
   } finally {
-    if (page) await page.close().catch(() => {});
+    if (context) await context.close().catch(() => {});
   }
 });
 
@@ -911,28 +972,48 @@ app.post('/api/export-analysis', (req, res) => {
 });
 
 // ============================================================
-// 8) 오래된 세션 자동 정리 (24시간 이상)
+// 헬스체크
+// ============================================================
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    browserConnected: !!(browser && browser.isConnected()),
+    memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB'
+  });
+});
+
+// ============================================================
+// 8) 오래된 세션 자동 정리
 // ============================================================
 function cleanupOldSessions() {
-  const maxAge = 24 * 60 * 60 * 1000; // 24시간
   const now = Date.now();
 
-  [DIRS.screenshots].forEach(dir => {
+  // screenshots/ — 24시간
+  cleanupDir(DIRS.screenshots, 24 * 60 * 60 * 1000, true);
+  // output/ — 7일
+  cleanupDir(DIRS.output, 7 * 24 * 60 * 60 * 1000, false);
+  // history/ — 30일
+  cleanupDir(DIRS.history, 30 * 24 * 60 * 60 * 1000, false);
+
+  function cleanupDir(dir, maxAge, dirsOnly) {
     fs.readdir(dir, (err, names) => {
       if (err) return;
       names.forEach(name => {
         const fullPath = path.join(dir, name);
         fs.stat(fullPath, (err, stat) => {
           if (err) return;
-          if (stat.isDirectory() && (now - stat.mtimeMs) > maxAge) {
-            fs.rm(fullPath, { recursive: true, force: true }, () => {
-              console.log(`정리됨: ${fullPath}`);
-            });
+          if ((now - stat.mtimeMs) > maxAge) {
+            if (stat.isDirectory()) {
+              fs.rm(fullPath, { recursive: true, force: true }, () => {});
+            } else if (!dirsOnly) {
+              fs.unlink(fullPath, () => {});
+            }
           }
         });
       });
     });
-  });
+  }
 }
 
 // 서버 시작 시 + 6시간마다 정리 (비동기로 실행하여 서버 시작 차단 방지)
