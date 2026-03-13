@@ -181,8 +181,17 @@ async function crawlPage(url, onProgress, abortSignal) {
   }
   activeCrawls++;
   let context = null;
+
+  // abortSignal 체크 헬퍼
+  const checkAbort = () => {
+    if (abortSignal && abortSignal.aborted) {
+      throw new Error('클라이언트 연결이 끊겨 크롤링이 취소되었습니다.');
+    }
+  };
+
   try {
     notify('connecting', '브라우저 시작 중...', 5);
+    checkAbort();
     const b = await getBrowser();
     context = await createStealthContext(b);
     const page = await context.newPage();
@@ -222,6 +231,7 @@ async function crawlPage(url, onProgress, abortSignal) {
 
     // 페이지 로딩
     notify('loading', '페이지 로딩 중...', 15);
+    checkAbort();
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     // networkidle은 SPA에서 매우 오래 걸릴 수 있으므로 제한시간 설정
     await Promise.race([
@@ -317,6 +327,7 @@ async function crawlPage(url, onProgress, abortSignal) {
 
     // 1단계: 전체 스크롤하여 lazy-load 콘텐츠 모두 로딩
     notify('scrolling', '전체 스크롤 중 (lazy-load)...', 45);
+    checkAbort();
     await autoScroll(page);
     await page.waitForTimeout(2000);
 
@@ -399,6 +410,7 @@ async function crawlPage(url, onProgress, abortSignal) {
       let staleCount = 0;
 
       while (chunkIndex < maxChunks) {
+        checkAbort();
         // 현재 뷰포트 이미지 로딩 대기
         await page.evaluate(() => {
           return Promise.all(
@@ -594,6 +606,7 @@ async function crawlPage(url, onProgress, abortSignal) {
     // 페이지에서 직접 이미지를 fetch (같은 세션 쿠키 공유)
     const maxImages = Math.min(50, pageData.images.length);
     notify('downloading', `이미지 다운로드 중 (${maxImages}개)...`, 80);
+    checkAbort();
     let totalDownloadBytes = 0;
     const MAX_TOTAL_BYTES = 80 * 1024 * 1024; // 80MB 총 한도
     const MAX_PER_IMAGE = 5 * 1024 * 1024; // 5MB 개별 한도
@@ -697,18 +710,18 @@ app.get('/api/crawl-sse', async (req, res) => {
 
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
 
-  // 클라이언트 연결 끊김 감지
-  let clientDisconnected = false;
-  req.on('close', () => { clientDisconnected = true; });
+  // 클라이언트 연결 끊김 감지 → AbortController로 크롤링 중단
+  const abortController = new AbortController();
+  req.on('close', () => { abortController.abort(); });
 
   const send = (type, message, percent) => {
-    if (!res.writableEnded && !clientDisconnected) res.write(`data: ${JSON.stringify({ type, message, percent })}\n\n`);
+    if (!res.writableEnded && !abortController.signal.aborted) res.write(`data: ${JSON.stringify({ type, message, percent })}\n\n`);
   };
 
   try {
     const result = await crawlPage(url, (step, message, percent) => {
       send('progress', message, percent);
-    });
+    }, abortController.signal);
     res.write(`data: ${JSON.stringify({ type: 'complete', ...result })}\n\n`);
   } catch (e) {
     send('error', e.message, 0);
@@ -844,12 +857,12 @@ ${pageData ? `\n추가 추출 텍스트:\n- 제품명: ${pageData.productName ||
       try {
         analysis = JSON.parse(cleaned);
       } catch (parseErr) {
-        // 한번 더 시도: 줄바꿈 이스케이프 문제 해결
+        // 한번 더 시도: JSON 문자열 값 내부의 실제 줄바꿈만 이스케이프
         try {
-          const doubleCleaned = cleaned
-            .replace(/\n/g, '\\n')
-            .replace(/\r/g, '\\r')
-            .replace(/\t/g, '\\t');
+          const doubleCleaned = cleaned.replace(
+            /"(?:[^"\\]|\\.)*"/g,
+            match => match.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')
+          );
           analysis = JSON.parse(doubleCleaned);
         } catch {
           console.error('JSON 파싱 실패:', parseErr.message, '(첫 200자:', cleaned.substring(0, 200), ')');
@@ -1156,6 +1169,17 @@ app.post('/api/export-analysis', (req, res) => {
 });
 
 // ============================================================
+// 스크린샷 개수 조회 (히스토리 복원용)
+// ============================================================
+app.get('/api/screenshots/:sessionId/count', (req, res) => {
+  if (!isValidSessionId(req.params.sessionId)) return res.status(400).json({ error: '유효하지 않은 sessionId' });
+  const dir = path.join(DIRS.screenshots, req.params.sessionId);
+  if (!fs.existsSync(dir)) return res.json({ count: 0 });
+  const count = fs.readdirSync(dir).filter(f => f.startsWith('screenshot_')).length;
+  res.json({ count });
+});
+
+// ============================================================
 // 헬스체크
 // ============================================================
 app.get('/api/health', (req, res) => {
@@ -1234,7 +1258,7 @@ function detectPlatform(url) {
   const platforms = [
     ['coupang.com', 'coupang'],
     ['smartstore.naver.com', 'naver'], ['shopping.naver.com', 'naver'], ['brand.naver.com', 'naver'],
-    ['wadiz.kr', 'wadiz'], ['wadiz.kr/funding', 'wadiz'],
+    ['wadiz.kr', 'wadiz'],
     ['11st.co.kr', '11st'],
     ['gmarket.co.kr', 'gmarket'],
     ['auction.co.kr', 'auction'],
