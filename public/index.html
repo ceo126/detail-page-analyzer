@@ -433,6 +433,16 @@
     .gen-history-item { display:flex; align-items:center; gap:8px; padding:8px 10px; background:#252830; border-radius:6px; margin-bottom:6px; cursor:pointer; font-size:12px; }
     .gen-history-item:hover { background:#2d3140; }
     .gen-history-item .time { color:#555; margin-left:auto; white-space:nowrap; }
+
+    /* 라이트박스 */
+    .lightbox { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.9); z-index:200; cursor:zoom-out; align-items:center; justify-content:center; }
+    .lightbox.show { display:flex; }
+    .lightbox img { max-width:95vw; max-height:95vh; object-fit:contain; border-radius:8px; }
+
+    /* 히스토리 검색 */
+    .history-search { padding:8px; border-bottom:1px solid #1f2233; }
+    .history-search input { width:100%; background:#252830; border:1px solid #2d3140; border-radius:6px; color:#fff; padding:6px 10px; font-size:12px; outline:none; }
+    .history-search input::placeholder { color:#555; }
   </style>
 </head>
 <body>
@@ -533,6 +543,7 @@
             <button class="btn btn-gray btn-sm" onclick="editHtml()">HTML 편집</button>
             <button class="btn btn-gray btn-sm" onclick="exportAnalysisJson()">JSON 저장</button>
             <button class="btn btn-gray btn-sm" onclick="downloadHtml()">HTML 저장</button>
+            <button class="btn btn-gray btn-sm" onclick="copyHtmlToClipboard()">HTML 복사</button>
             <button class="btn btn-gray btn-sm" id="btnCompare" onclick="toggleCompare()" style="display:none;">원본 비교</button>
             <button class="btn btn-gray btn-sm" onclick="openFullPreview()" title="새 창에서 열기">전체화면</button>
             <button class="btn btn-green btn-sm" id="btnExportJpg" onclick="exportJpg(this)" style="margin-left:auto;">JPG 내보내기</button>
@@ -590,6 +601,11 @@
     </div>
   </div>
 
+  <!-- 라이트박스 -->
+  <div class="lightbox" id="lightbox" onclick="this.classList.remove('show')">
+    <img id="lightboxImg" src="">
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script>
@@ -617,6 +633,19 @@
     // ============================================================
     let currentPageData = null;
     let currentUrl = null;
+    let currentEventSource = null;
+
+    function cancelCrawl() {
+      if (currentEventSource) {
+        currentEventSource.close();
+        currentEventSource = null;
+      }
+      const btnCrawl = document.getElementById('btnCrawl');
+      btnCrawl.disabled = false;
+      btnCrawl.textContent = '이미지 가져오기';
+      setProgress(false);
+      showToast('크롤링 취소됨', 'error');
+    }
 
     async function startCrawl() {
       const url = document.getElementById('urlInput').value.trim();
@@ -626,6 +655,10 @@
       // 이미 분석 데이터가 있고 URL이 다르면 확인
       if (currentAnalysis && currentUrl && currentUrl !== url) {
         if (!confirm('현재 분석 데이터가 있습니다. 새 URL로 크롤링하시겠습니까?')) return;
+      }
+      // 같은 URL 중복 크롤링 경고
+      if (currentUrl === url && currentSessionId && !currentAnalysis) {
+        if (!confirm('같은 URL을 이미 크롤링했습니다. 다시 하시겠습니까?')) return;
       }
 
       const btnCrawl = document.getElementById('btnCrawl');
@@ -646,19 +679,25 @@
 
       // SSE 기반 실시간 진행률
       const eventSource = new EventSource(`/api/crawl-sse?url=${encodeURIComponent(url)}`);
+      currentEventSource = eventSource;
       let sseWorked = false;
+
+      // 취소 버튼 표시
+      btnCrawl.innerHTML = `<span class="spinner"></span>연결 중... <span onclick="event.stopPropagation(); cancelCrawl();" style="margin-left:4px; color:#ef4444; cursor:pointer; font-weight:600;" title="취소">✕</span>`;
 
       eventSource.onmessage = (event) => {
         sseWorked = true;
         const data = JSON.parse(event.data);
         if (data.type === 'progress') {
           setProgress(true, data.percent, data.message);
-          btnCrawl.innerHTML = `<span class="spinner"></span>${data.message}`;
+          btnCrawl.innerHTML = `<span class="spinner"></span>${data.message} <span onclick="event.stopPropagation(); cancelCrawl();" style="margin-left:4px; color:#ef4444; cursor:pointer; font-weight:600;" title="취소">✕</span>`;
         } else if (data.type === 'complete') {
           eventSource.close();
+          currentEventSource = null;
           onCrawlSuccess(data);
         } else if (data.type === 'error') {
           eventSource.close();
+          currentEventSource = null;
           showToast(data.message, 'error');
           setProgress(false);
           btnCrawl.disabled = false;
@@ -668,6 +707,7 @@
 
       eventSource.onerror = () => {
         eventSource.close();
+        currentEventSource = null;
         if (!sseWorked) startCrawlFallback(url);
       };
     }
@@ -791,7 +831,7 @@
         스크린샷 (${crawl.screenshotCount}장)
       </div>`;
       for (let i = 0; i < crawl.screenshotCount; i++) {
-        html += `<img src="/screenshots/${crawl.sessionId}/screenshot_${i}.jpg?t=${Date.now()}" alt="캡처 ${i+1}" style="margin-bottom:2px;" loading="lazy">`;
+        html += `<img src="/screenshots/${crawl.sessionId}/screenshot_${i}.jpg?t=${Date.now()}" alt="캡처 ${i+1}" style="margin-bottom:2px; cursor:pointer;" loading="lazy" onclick="openLightbox(this.src)">`;
       }
 
       // 다운로드된 원본 이미지 섹션
@@ -1056,21 +1096,47 @@
     // ============================================================
     // 히스토리
     // ============================================================
+    let historyCache = [];
     async function toggleHistory() {
       const list = document.getElementById('historyList');
       if (list.classList.contains('show')) { list.classList.remove('show'); return; }
       const res = await fetch('/api/history'); const data = await res.json();
+      historyCache = data.history || [];
+      renderHistoryList('');
+      list.classList.add('show');
+      // 검색 입력에 포커스
+      setTimeout(() => { const si = list.querySelector('.history-search input'); if (si) si.focus(); }, 100);
+    }
+    function renderHistoryList(query) {
+      const list = document.getElementById('historyList');
       const names = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', ohouse:'오늘의집', '11st':'11번가', gmarket:'G마켓', auction:'옥션', tmon:'티몬', wemakeprice:'위메프', aliexpress:'알리', idus:'아이디어스', other:'기타' };
-      list.innerHTML = (!data.history?.length) ? '<div style="padding:14px;color:#555;text-align:center;">없음</div>'
-        : data.history.map(h => `<div class="history-item" style="display:flex; align-items:start; gap:8px;">
+      const q = query.toLowerCase();
+      const filtered = q ? historyCache.filter(h =>
+        (h.productName || '').toLowerCase().includes(q) ||
+        (h.url || '').toLowerCase().includes(q) ||
+        (names[h.platform] || '').includes(q)
+      ) : historyCache;
+
+      function timeAgo(dateStr) {
+        const diff = Date.now() - new Date(dateStr).getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 60) return `${mins}분 전`;
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return `${hrs}시간 전`;
+        const days = Math.floor(hrs / 24);
+        return `${days}일 전`;
+      }
+
+      list.innerHTML = `<div class="history-search"><input type="text" placeholder="검색 (제품명, URL, 플랫폼)" value="${esc(query)}" oninput="renderHistoryList(this.value)"></div>`
+        + (!filtered.length ? '<div style="padding:14px;color:#555;text-align:center;">없음</div>'
+        : filtered.map(h => `<div class="history-item" style="display:flex; align-items:start; gap:8px;">
             <div style="flex:1; cursor:pointer;" onclick="loadHistory('${esc(h.sessionId)}')">
               <div class="name">${esc(h.productName||'(이름없음)')}</div>
-              <div class="meta">${esc(names[h.platform]||h.platform||'')} | ${esc(new Date(h.createdAt).toLocaleString('ko-KR'))}</div>
+              <div class="meta">${esc(names[h.platform]||h.platform||'')} | ${timeAgo(h.createdAt)}</div>
               ${h.url ? `<div class="meta" style="color:#3b82f6; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:240px;" title="${esc(h.url)}">${esc(h.url)}</div>` : ''}
             </div>
             <button onclick="event.stopPropagation(); deleteHistory('${esc(h.sessionId)}')" style="background:none; border:none; color:#555; cursor:pointer; padding:4px; font-size:14px;" title="삭제">&times;</button>
-          </div>`).join('');
-      list.classList.add('show');
+          </div>`).join(''));
     }
     async function loadHistory(sid) {
       document.getElementById('historyList').classList.remove('show');
@@ -1123,12 +1189,27 @@
     // ============================================================
     // HTML 편집 / JSON / 유틸
     // ============================================================
+    function openLightbox(src) {
+      document.getElementById('lightboxImg').src = src;
+      document.getElementById('lightbox').classList.add('show');
+    }
+
+    function copyHtmlToClipboard() {
+      if (!currentHtml) return showToast('먼저 생성하세요', 'error');
+      navigator.clipboard.writeText(currentHtml)
+        .then(() => showToast('HTML 코드 복사됨', 'success'))
+        .catch(() => showToast('복사 실패', 'error'));
+    }
+
     function downloadHtml() {
       if (!currentHtml) return showToast('먼저 생성하세요', 'error');
+      const defaultName = `detail_${currentOutputId || Date.now()}`;
+      const name = prompt('파일명을 입력하세요 (.html 자동 추가)', defaultName);
+      if (!name) return;
       const blob = new Blob([currentHtml], { type: 'text/html' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `detail_${currentOutputId || Date.now()}.html`;
+      a.download = name.endsWith('.html') ? name : name + '.html';
       a.click();
       URL.revokeObjectURL(a.href);
       showToast('HTML 다운로드됨', 'success');
@@ -1265,6 +1346,7 @@
       if (e.key === 'Escape') {
         closeHtmlEditor();
         document.getElementById('shortcutModal').style.display = 'none';
+        document.getElementById('lightbox').classList.remove('show');
         return;
       }
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
