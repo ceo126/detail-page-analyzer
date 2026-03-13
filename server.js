@@ -47,6 +47,10 @@ app.use('/output', express.static(DIRS.output));
 app.use('/screenshots', express.static(DIRS.screenshots));
 app.use('/uploads', express.static(DIRS.uploads));
 
+// 동시 크롤링 제한 (최대 2개)
+let activeCrawls = 0;
+const MAX_CONCURRENT_CRAWLS = 2;
+
 // 브라우저 관리 (싱글톤 브라우저 + 스텔스)
 let browser = null;
 let browserLaunching = null;
@@ -152,8 +156,12 @@ function validateUrl(url) {
 // ============================================================
 // 크롤링 핵심 로직 (POST, SSE 공용)
 // ============================================================
-async function crawlPage(url, onProgress) {
+async function crawlPage(url, onProgress, abortSignal) {
   const notify = onProgress || (() => {});
+  if (activeCrawls >= MAX_CONCURRENT_CRAWLS) {
+    throw new Error('동시 크롤링 제한 초과. 잠시 후 다시 시도해주세요.');
+  }
+  activeCrawls++;
   let context = null;
   try {
     notify('connecting', '브라우저 시작 중...', 5);
@@ -494,36 +502,34 @@ async function crawlPage(url, onProgress) {
 
     // 페이지에서 직접 이미지를 fetch (같은 세션 쿠키 공유)
     notify('downloading', `이미지 다운로드 중 (${pageData.images.length}개)...`, 80);
-    const downloadPromises = pageData.images.slice(0, 30).map(async (imgUrl, idx) => {
-      try {
-        const result = await page.evaluate(async (url) => {
-          try {
-            const res = await fetch(url);
-            if (!res.ok) return null;
-            const blob = await res.blob();
-            if (blob.size < 3000) return null;
-            const reader = new FileReader();
-            return new Promise(resolve => {
-              reader.onload = () => resolve({ data: reader.result.split(',')[1], size: blob.size, type: blob.type });
-              reader.readAsDataURL(blob);
-            });
-          } catch { return null; }
-        }, imgUrl);
-
-        if (result) {
-          const ext = result.type.includes('png') ? 'png' : result.type.includes('webp') ? 'webp' : 'jpg';
-          const imgPath = path.join(imageDir, `img_${idx}.${ext}`);
-          fs.writeFileSync(imgPath, Buffer.from(result.data, 'base64'));
-          downloadedImages.push({
-            index: idx,
-            url: imgUrl,
-            localPath: `/screenshots/${sessionId}/images/img_${idx}.${ext}`,
-            size: result.size
+    const downloadTasks = pageData.images.slice(0, 30).map((imgUrl, idx) => async () => {
+      const result = await page.evaluate(async (url) => {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) return null;
+          const blob = await res.blob();
+          if (blob.size < 3000) return null;
+          const reader = new FileReader();
+          return new Promise(resolve => {
+            reader.onload = () => resolve({ data: reader.result.split(',')[1], size: blob.size, type: blob.type });
+            reader.readAsDataURL(blob);
           });
-        }
-      } catch {}
+        } catch { return null; }
+      }, imgUrl);
+
+      if (result) {
+        const ext = result.type.includes('png') ? 'png' : result.type.includes('webp') ? 'webp' : 'jpg';
+        const imgPath = path.join(imageDir, `img_${idx}.${ext}`);
+        fs.writeFileSync(imgPath, Buffer.from(result.data, 'base64'));
+        downloadedImages.push({
+          index: idx,
+          url: imgUrl,
+          localPath: `/screenshots/${sessionId}/images/img_${idx}.${ext}`,
+          size: result.size
+        });
+      }
     });
-    await Promise.all(downloadPromises);
+    await parallelLimit(downloadTasks, 5);
 
     notify('complete', '크롤링 완료', 100);
     console.log(`크롤링 완료: 스크린샷 ${numChunks}장, 이미지 ${downloadedImages.length}개 다운로드, 전체 높이 ${totalHeight}px`);
@@ -542,8 +548,23 @@ async function crawlPage(url, onProgress) {
     const msg = err.message?.includes('timeout') ? '페이지 로딩 시간 초과. 다시 시도해주세요.' : '크롤링 중 오류가 발생했습니다.';
     throw new Error(msg);
   } finally {
+    activeCrawls--;
     if (context) await context.close().catch(() => {});
   }
+}
+
+// 이미지 다운로드 동시성 제한 유틸
+async function parallelLimit(tasks, limit) {
+  const results = [];
+  let idx = 0;
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (idx < tasks.length) {
+      const i = idx++;
+      results[i] = await tasks[i]().catch(() => null);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 // ============================================================
@@ -575,8 +596,12 @@ app.get('/api/crawl-sse', async (req, res) => {
 
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
 
+  // 클라이언트 연결 끊김 감지
+  let clientDisconnected = false;
+  req.on('close', () => { clientDisconnected = true; });
+
   const send = (type, message, percent) => {
-    if (!res.writableEnded) res.write(`data: ${JSON.stringify({ type, message, percent })}\n\n`);
+    if (!res.writableEnded && !clientDisconnected) res.write(`data: ${JSON.stringify({ type, message, percent })}\n\n`);
   };
 
   try {
@@ -1232,14 +1257,15 @@ app.use((err, req, res, next) => {
 });
 
 // 서버 시작
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`상세페이지 분석기 서버 실행중: http://localhost:${PORT}`);
 });
 
 async function shutdown() {
   console.log('\n서버 종료 중...');
+  server.close(() => { console.log('HTTP 서버 종료됨'); });
   if (browser) await browser.close().catch(() => {});
-  process.exit();
+  setTimeout(() => process.exit(0), 3000);
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
