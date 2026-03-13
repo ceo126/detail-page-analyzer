@@ -273,21 +273,41 @@ async function crawlPage(url, onProgress, abortSignal) {
     // "더보기"/"상세정보" 버튼 클릭하여 숨겨진 콘텐츠 펼치기
     notify('expanding', '콘텐츠 펼치는 중...', 35);
 
-    // 와디즈: "스토리" 탭 클릭으로 상세 콘텐츠 노출
+    // 와디즈: "스토리" 탭 + "스토리 더보기" 버튼 클릭으로 전체 상세 콘텐츠 펼치기
     if (platform === 'wadiz') {
       try {
-        const storyTab = await page.$('button:has-text("스토리"), a:has-text("스토리"), [class*="tab"]:has-text("스토리"), [role="tab"]:has-text("스토리")');
+        // 1) 스토리 탭이 비활성이면 클릭
+        const storyTab = await page.$('button[class*="Tab"]:has-text("스토리")');
         if (storyTab && await storyTab.isVisible()) {
-          await storyTab.click();
-          await page.waitForTimeout(2000);
-          // networkidle 재대기 (스토리 탭 콘텐츠 로딩)
+          const isActive = await storyTab.evaluate(el => el.className.includes('active'));
+          if (!isActive) {
+            await storyTab.click();
+            await page.waitForTimeout(2000);
+            console.log('와디즈 스토리 탭 클릭');
+          } else {
+            console.log('와디즈 스토리 탭 이미 활성');
+          }
+        }
+
+        // 2) "스토리 더보기" 버튼 클릭 → 전체 상세 이미지 펼침
+        const moreBtn = await page.$('button:has-text("스토리 더보기")');
+        if (moreBtn && await moreBtn.isVisible()) {
+          await moreBtn.scrollIntoViewIfNeeded();
+          await page.waitForTimeout(500);
+          await moreBtn.click();
+          notify('expanding', '와디즈 스토리 전체 펼치는 중...', 38);
+          // 콘텐츠 로딩 대기
+          await page.waitForTimeout(3000);
           await Promise.race([
             page.waitForLoadState('networkidle'),
             new Promise(r => setTimeout(r, 10000))
           ]).catch(() => {});
-          console.log('와디즈 스토리 탭 클릭 완료');
+          const newHeight = await page.evaluate(() => document.body.scrollHeight);
+          console.log(`와디즈 스토리 더보기 클릭 완료 (높이: ${newHeight}px)`);
         }
-      } catch {}
+      } catch (e) {
+        console.log('와디즈 스토리 펼치기 실패:', e.message);
+      }
     }
 
     await expandDetailContent(page, platform);
@@ -373,7 +393,8 @@ async function crawlPage(url, onProgress, abortSignal) {
       const scrollStep = 700;
       let scrollY = 0;
       let chunkIndex = 0;
-      const maxChunks = 30;
+      // 페이지 높이에 따라 적응형 청크 수 (최대 50)
+      const maxChunks = Math.min(50, Math.max(30, Math.ceil(scrollInfo.scrollHeight / scrollStep)));
       let lastScrollTop = -1;
       let staleCount = 0;
 
@@ -571,23 +592,29 @@ async function crawlPage(url, onProgress, abortSignal) {
     fs.mkdirSync(imageDir, { recursive: true });
 
     // 페이지에서 직접 이미지를 fetch (같은 세션 쿠키 공유)
-    notify('downloading', `이미지 다운로드 중 (${pageData.images.length}개)...`, 80);
-    const downloadTasks = pageData.images.slice(0, 30).map((imgUrl, idx) => async () => {
-      const result = await page.evaluate(async (url) => {
+    const maxImages = Math.min(50, pageData.images.length);
+    notify('downloading', `이미지 다운로드 중 (${maxImages}개)...`, 80);
+    let totalDownloadBytes = 0;
+    const MAX_TOTAL_BYTES = 80 * 1024 * 1024; // 80MB 총 한도
+    const MAX_PER_IMAGE = 5 * 1024 * 1024; // 5MB 개별 한도
+    const downloadTasks = pageData.images.slice(0, maxImages).map((imgUrl, idx) => async () => {
+      if (totalDownloadBytes > MAX_TOTAL_BYTES) return; // 메모리 보호
+      const result = await page.evaluate(async ({ url, maxSize }) => {
         try {
           const res = await fetch(url);
           if (!res.ok) return null;
           const blob = await res.blob();
-          if (blob.size < 3000) return null;
+          if (blob.size < 3000 || blob.size > maxSize) return null;
           const reader = new FileReader();
           return new Promise(resolve => {
             reader.onload = () => resolve({ data: reader.result.split(',')[1], size: blob.size, type: blob.type });
             reader.readAsDataURL(blob);
           });
         } catch { return null; }
-      }, imgUrl);
+      }, { url: imgUrl, maxSize: MAX_PER_IMAGE });
 
       if (result) {
+        totalDownloadBytes += result.size;
         const ext = result.type.includes('png') ? 'png' : result.type.includes('webp') ? 'webp' : 'jpg';
         const imgPath = path.join(imageDir, `img_${idx}.${ext}`);
         fs.writeFileSync(imgPath, Buffer.from(result.data, 'base64'));
@@ -599,7 +626,7 @@ async function crawlPage(url, onProgress, abortSignal) {
         });
       }
     });
-    await parallelLimit(downloadTasks, 5);
+    await parallelLimit(downloadTasks, 3); // 동시 3개로 메모리 부담 감소
 
     notify('complete', '크롤링 완료', 100);
     console.log(`크롤링 완료: 스크린샷 ${numChunks}장, 이미지 ${downloadedImages.length}개 다운로드, 전체 높이 ${totalHeight}px`);
@@ -1244,32 +1271,34 @@ async function dismissPopups(page) {
   }
 }
 
-async function autoScroll(page) {
-  await page.evaluate(async () => {
+async function autoScroll(page, maxPx = 50000) {
+  await page.evaluate(async (limit) => {
     await new Promise((resolve) => {
       let totalHeight = 0;
-      const distance = 400;
+      const pageH = document.body.scrollHeight;
+      // 매우 긴 페이지(>30000px)는 빠른 스크롤로 lazy-load만 트리거
+      const distance = pageH > 30000 ? 800 : 400;
+      const interval = pageH > 30000 ? 150 : 300;
       let lastScrollHeight = 0;
       let sameHeightCount = 0;
       const timer = setInterval(() => {
         window.scrollBy(0, distance);
         totalHeight += distance;
         const currentScrollHeight = document.body.scrollHeight;
-        // 스크롤이 더 이상 늘어나지 않으면 종료
         if (currentScrollHeight === lastScrollHeight) {
           sameHeightCount++;
         } else {
           sameHeightCount = 0;
         }
         lastScrollHeight = currentScrollHeight;
-        if (sameHeightCount >= 5 || totalHeight > 100000) {
+        if (sameHeightCount >= 5 || totalHeight > limit) {
           clearInterval(timer);
           window.scrollTo(0, 0);
           resolve();
         }
-      }, 300);
+      }, interval);
     });
-  });
+  }, maxPx);
 }
 
 // "더보기"/"상세정보" 버튼 클릭하여 접힌 콘텐츠 펼치기
