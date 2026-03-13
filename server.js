@@ -223,8 +223,12 @@ async function crawlPage(url, onProgress, abortSignal) {
     // 페이지 로딩
     notify('loading', '페이지 로딩 중...', 15);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-    await page.waitForLoadState('networkidle').catch(() => {});
-    await page.waitForTimeout(3000);
+    // networkidle은 SPA에서 매우 오래 걸릴 수 있으므로 제한시간 설정
+    await Promise.race([
+      page.waitForLoadState('networkidle'),
+      new Promise(r => setTimeout(r, 15000)) // 최대 15초 대기
+    ]).catch(() => {});
+    await page.waitForTimeout(2000);
 
     // 봇 탐지 + 사이트 에러 페이지 체크
     const pageCheck = await page.evaluate(() => {
@@ -268,6 +272,24 @@ async function crawlPage(url, onProgress, abortSignal) {
 
     // "더보기"/"상세정보" 버튼 클릭하여 숨겨진 콘텐츠 펼치기
     notify('expanding', '콘텐츠 펼치는 중...', 35);
+
+    // 와디즈: "스토리" 탭 클릭으로 상세 콘텐츠 노출
+    if (platform === 'wadiz') {
+      try {
+        const storyTab = await page.$('button:has-text("스토리"), a:has-text("스토리"), [class*="tab"]:has-text("스토리"), [role="tab"]:has-text("스토리")');
+        if (storyTab && await storyTab.isVisible()) {
+          await storyTab.click();
+          await page.waitForTimeout(2000);
+          // networkidle 재대기 (스토리 탭 콘텐츠 로딩)
+          await Promise.race([
+            page.waitForLoadState('networkidle'),
+            new Promise(r => setTimeout(r, 10000))
+          ]).catch(() => {});
+          console.log('와디즈 스토리 탭 클릭 완료');
+        }
+      } catch {}
+    }
+
     await expandDetailContent(page, platform);
 
     // iframe 내 상세 이미지가 있으면 메인 페이지에 펼치기
@@ -778,10 +800,22 @@ ${pageData ? `\n추가 추출 텍스트:\n- 제품명: ${pageData.productName ||
     let analysis;
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
+      // 제어 문자 제거 (Gemini가 \b, \f 등을 포함할 수 있음)
+      const cleaned = jsonMatch[0].replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
       try {
-        analysis = JSON.parse(jsonMatch[0]);
-      } catch {
-        analysis = { raw: text };
+        analysis = JSON.parse(cleaned);
+      } catch (parseErr) {
+        // 한번 더 시도: 줄바꿈 이스케이프 문제 해결
+        try {
+          const doubleCleaned = cleaned
+            .replace(/\n/g, '\\n')
+            .replace(/\r/g, '\\r')
+            .replace(/\t/g, '\\t');
+          analysis = JSON.parse(doubleCleaned);
+        } catch {
+          console.error('JSON 파싱 실패:', parseErr.message, '(첫 200자:', cleaned.substring(0, 200), ')');
+          analysis = { raw: text };
+        }
       }
     } else {
       analysis = { raw: text };

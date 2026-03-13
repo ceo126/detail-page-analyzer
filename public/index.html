@@ -881,6 +881,21 @@
     // 분석 결과 렌더링
     // ============================================================
     function renderAnalysis(a) {
+      // raw 텍스트에서 JSON 복구 시도
+      if (a.raw && !a.product && !a.overall) {
+        try {
+          const m = a.raw.match(/\{[\s\S]*\}/);
+          if (m) {
+            const cleaned = m[0].replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
+            const parsed = JSON.parse(cleaned);
+            if (parsed.product || parsed.overall) {
+              a = parsed;
+              currentAnalysis = a; // 전역 업데이트
+            }
+          }
+        } catch {}
+      }
+
       const el = document.getElementById('analysisContent');
       let h = `<div style="display:flex; gap:8px; margin-bottom:12px; align-items:center; flex-wrap:wrap;">
         <button class="btn btn-gray btn-sm" onclick="startAnalyze()" style="font-size:11px;">재분석</button>
