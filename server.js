@@ -332,7 +332,19 @@ async function crawlPage(url, onProgress, abortSignal) {
     // ============================================================
     // 2단계: 맨 위로 돌아가서 뷰포트 단위 스크린샷 캡처
     // ============================================================
-    const sessionId = Date.now().toString();
+    // 제품명 미리 추출 (폴더명 생성용)
+    const quickTitle = await page.evaluate(() => {
+      const sels = ['h1', 'meta[property="og:title"]', 'title'];
+      for (const s of sels) {
+        const el = document.querySelector(s);
+        if (el) {
+          const t = (el.content || el.textContent || '').trim();
+          if (t) return t;
+        }
+      }
+      return '';
+    });
+    const sessionId = buildSessionId(platform, quickTitle || url);
     const screenshotDir = path.join(DIRS.screenshots, sessionId);
     fs.mkdirSync(screenshotDir, { recursive: true });
 
@@ -1167,9 +1179,25 @@ function cleanupOldSessions() {
 setTimeout(cleanupOldSessions, 5000);
 setInterval(cleanupOldSessions, 6 * 60 * 60 * 1000);
 
+// sessionId 생성: 타임스탬프_플랫폼_제품명
+function buildSessionId(platform, name) {
+  const ts = Date.now().toString();
+  const safePlatform = (platform || 'other').replace(/[^a-zA-Z0-9가-힣]/g, '');
+  // 한글/영문/숫자만 남기고, 공백→언더스코어, 최대 40자
+  let safeName = (name || '')
+    .replace(/[\\/:*?"<>|.#%&{}]/g, '')  // 파일시스템 금지 문자 제거
+    .replace(/\s+/g, '_')                // 공백→언더스코어
+    .replace(/[^\w가-힣_-]/g, '')         // 안전한 문자만
+    .substring(0, 40)
+    .replace(/_+$/, '');                  // 끝 언더스코어 제거
+  if (!safeName) safeName = 'page';
+  return `${ts}_${safePlatform}_${safeName}`;
+}
+
 // sessionId 검증 (Path Traversal 방지)
 function isValidSessionId(id) {
-  return /^\d+$/.test(id);
+  // 숫자만 (기존 호환) 또는 타임스탬프_플랫폼_이름 형식
+  return /^[\w가-힣_-]+$/.test(id) && !id.includes('..') && id.length <= 120;
 }
 
 // ============================================================
