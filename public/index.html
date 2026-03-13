@@ -418,6 +418,7 @@
       <button class="btn-analyze" id="btnAnalyze" onclick="startAnalyze()" style="display:none; background:#8b5cf6;">AI 분석</button>
     </div>
     <div class="header-right">
+      <button class="btn-gray btn-sm" onclick="document.getElementById('shortcutModal').style.display='block'" style="background:none; border:1px solid #2d3140; color:#555; padding:3px 8px; border-radius:4px; cursor:pointer; font-size:12px;" title="키보드 단축키">?</button>
       <div class="history-dropdown">
         <button class="btn-gray btn-sm" onclick="toggleHistory()">히스토리</button>
         <div class="history-list" id="historyList"></div>
@@ -492,7 +493,9 @@
             <button class="btn btn-gray btn-sm" onclick="switchTab('generate')">다시 생성</button>
             <button class="btn btn-gray btn-sm" onclick="editHtml()">HTML 편집</button>
             <button class="btn btn-gray btn-sm" onclick="exportAnalysisJson()">JSON 저장</button>
+            <button class="btn btn-gray btn-sm" onclick="downloadHtml()">HTML 저장</button>
             <button class="btn btn-gray btn-sm" id="btnCompare" onclick="toggleCompare()" style="display:none;">원본 비교</button>
+            <button class="btn btn-gray btn-sm" onclick="openFullPreview()" title="새 창에서 열기">전체화면</button>
             <button class="btn btn-green btn-sm" id="btnExportJpg" onclick="exportJpg(this)" style="margin-left:auto;">JPG 내보내기</button>
           </div>
           <div class="preview-wrap" id="previewWrap">
@@ -529,6 +532,25 @@
     </div>
   </div>
 
+  <!-- 단축키 도움말 -->
+  <div class="modal-overlay" id="shortcutModal" style="z-index:150;">
+    <div class="modal-box" style="max-width:400px; height:auto; margin-top:10vh;">
+      <div class="modal-header">
+        <span>키보드 단축키</span>
+        <button class="btn btn-gray btn-sm" onclick="document.getElementById('shortcutModal').style.display='none'">닫기</button>
+      </div>
+      <div style="padding:16px;">
+        <div class="row"><span class="row-label">Ctrl + Enter</span><span class="row-value">크롤링 / AI 분석</span></div>
+        <div class="row"><span class="row-label">Ctrl + G</span><span class="row-value">상세페이지 생성</span></div>
+        <div class="row"><span class="row-label">Alt + 1</span><span class="row-value">분석 결과 탭</span></div>
+        <div class="row"><span class="row-label">Alt + 2</span><span class="row-value">생성 탭</span></div>
+        <div class="row"><span class="row-label">Alt + 3</span><span class="row-value">미리보기 탭</span></div>
+        <div class="row"><span class="row-label">Escape</span><span class="row-value">모달 닫기</span></div>
+        <div class="row"><span class="row-label">?</span><span class="row-value">이 도움말</span></div>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script>
@@ -561,6 +583,11 @@
       const url = document.getElementById('urlInput').value.trim();
       if (!url) return showToast('URL을 입력해주세요', 'error');
       try { new URL(url); } catch { return showToast('올바른 URL이 아닙니다', 'error'); }
+
+      // 이미 분석 데이터가 있고 URL이 다르면 확인
+      if (currentAnalysis && currentUrl && currentUrl !== url) {
+        if (!confirm('현재 분석 데이터가 있습니다. 새 URL로 크롤링하시겠습니까?')) return;
+      }
 
       const btnCrawl = document.getElementById('btnCrawl');
       const btnAnalyze = document.getElementById('btnAnalyze');
@@ -644,6 +671,7 @@
       document.getElementById('btnRecrawl').style.display = 'inline-block';
       document.getElementById('btnCompare').style.display = 'inline-block';
       switchTab('analysis');
+      saveSession();
     }
 
     // ============================================================
@@ -656,6 +684,7 @@
       btnAnalyze.disabled = true;
       btnAnalyze.innerHTML = '<span class="spinner"></span>AI 분석 중...';
       setProgress(true, 30, 'Gemini AI 분석 중...');
+      const analyzeStart = Date.now();
 
       // 스켈레톤 로딩
       document.getElementById('analysisContent').innerHTML = `
@@ -686,7 +715,9 @@
         switchTab('analysis');
         setProgress(true, 100, '분석 완료');
         setTimeout(() => setProgress(false), 800);
-        showToast('AI 분석 완료', 'success');
+        const analyzeSec = ((Date.now() - analyzeStart) / 1000).toFixed(1);
+        showToast(`AI 분석 완료 (${analyzeSec}초)`, 'success');
+        saveSession();
 
         // 키워드 자동 채움 (분석된 제품명)
         const productName = analyze.analysis?.product?.name;
@@ -721,7 +752,7 @@
         스크린샷 (${crawl.screenshotCount}장)
       </div>`;
       for (let i = 0; i < crawl.screenshotCount; i++) {
-        html += `<img src="/screenshots/${crawl.sessionId}/screenshot_${i}.jpg?t=${Date.now()}" alt="캡처 ${i+1}" style="margin-bottom:2px;">`;
+        html += `<img src="/screenshots/${crawl.sessionId}/screenshot_${i}.jpg?t=${Date.now()}" alt="캡처 ${i+1}" style="margin-bottom:2px;" loading="lazy">`;
       }
 
       // 다운로드된 원본 이미지 섹션
@@ -994,6 +1025,28 @@
     // ============================================================
     // HTML 편집 / JSON / 유틸
     // ============================================================
+    function downloadHtml() {
+      if (!currentHtml) return showToast('먼저 생성하세요', 'error');
+      const blob = new Blob([currentHtml], { type: 'text/html' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `detail_${currentOutputId || Date.now()}.html`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      showToast('HTML 다운로드됨', 'success');
+    }
+
+    function openFullPreview() {
+      if (!currentHtml) return showToast('먼저 생성하세요', 'error');
+      if (currentOutputId) {
+        window.open(`/output/page_${currentOutputId}.html`, '_blank');
+      } else {
+        const w = window.open('', '_blank');
+        w.document.write(currentHtml);
+        w.document.close();
+      }
+    }
+
     function editHtml() { if (!currentHtml) return; document.getElementById('htmlEditor').value = currentHtml; document.getElementById('htmlModal').style.display = 'block'; }
     function closeHtmlEditor() { document.getElementById('htmlModal').style.display = 'none'; }
     function applyHtmlEdit() { currentHtml = document.getElementById('htmlEditor').value; updatePreview(currentHtml); closeHtmlEditor(); showToast('적용됨', 'success'); }
@@ -1015,11 +1068,14 @@
       if (notice) notice.style.display = (name === 'generate' && !currentAnalysis) ? 'block' : 'none';
     }
 
+    const originalTitle = document.title;
     function setProgress(show, pct, text) {
       const bar = document.getElementById('progressBar');
       bar.style.display = show ? 'block' : 'none';
       document.getElementById('progressFill').style.width = (pct||0) + '%';
       document.getElementById('progressText').textContent = text || '';
+      // 탭 제목에 진행률 표시
+      document.title = (show && pct > 0 && pct < 100) ? `[${pct}%] ${text || '처리 중...'}` : originalTitle;
     }
 
     let toastTimer = null;
@@ -1108,7 +1164,11 @@
 
     // 키보드 단축키
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') return closeHtmlEditor();
+      if (e.key === 'Escape') {
+        closeHtmlEditor();
+        document.getElementById('shortcutModal').style.display = 'none';
+        return;
+      }
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if (e.ctrlKey && e.key === 'Enter') {
         e.preventDefault();
@@ -1119,7 +1179,64 @@
       if (e.altKey && e.key === '1') switchTab('analysis');
       if (e.altKey && e.key === '2') switchTab('generate');
       if (e.altKey && e.key === '3') switchTab('preview');
+      if (e.key === '?' && !e.ctrlKey && !e.altKey) {
+        document.getElementById('shortcutModal').style.display = 'block';
+      }
     });
+
+    // 세션 자동 저장/복원
+    function saveSession() {
+      if (!currentSessionId) return;
+      try {
+        localStorage.setItem('lastSession', JSON.stringify({
+          sessionId: currentSessionId,
+          url: currentUrl,
+          timestamp: Date.now()
+        }));
+      } catch {}
+    }
+    async function restoreSession() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('lastSession') || 'null');
+        if (!saved || Date.now() - saved.timestamp > 24 * 60 * 60 * 1000) return; // 24시간 이내만
+        const res = await fetch(`/api/history/${saved.sessionId}`);
+        const data = await res.json();
+        if (!data.success) return;
+        currentSessionId = data.sessionId;
+        currentAnalysis = data.analysis;
+        if (saved.url) {
+          document.getElementById('urlInput').value = saved.url;
+          currentUrl = saved.url;
+        }
+        // 스크린샷 복원
+        const area = document.getElementById('screenshotArea');
+        const testImg = await fetch(`/screenshots/${saved.sessionId}/screenshot_0.jpg`, { method: 'HEAD' });
+        if (testImg.ok) {
+          let html = '';
+          for (let i = 0; i < 30; i++) {
+            const check = await fetch(`/screenshots/${saved.sessionId}/screenshot_${i}.jpg`, { method: 'HEAD' });
+            if (!check.ok) break;
+            html += `<img src="/screenshots/${saved.sessionId}/screenshot_${i}.jpg" alt="캡처 ${i+1}" style="width:100%;display:block;margin-bottom:2px;" loading="lazy">`;
+            window._screenshotCount = i + 1;
+          }
+          if (html) area.innerHTML = html;
+        }
+        if (data.analysis) {
+          renderAnalysis(data.analysis);
+          document.getElementById('btnAnalyze').style.display = 'inline-flex';
+          document.getElementById('btnRecrawl').style.display = 'inline-block';
+          document.getElementById('btnCompare').style.display = 'inline-block';
+        }
+        if (data.platform) {
+          const badge = document.getElementById('platformBadge');
+          const names = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', ohouse:'오늘의집', '11st':'11번가', gmarket:'G마켓', auction:'옥션', tmon:'티몬', wemakeprice:'위메프', aliexpress:'알리', idus:'아이디어스', other:'기타' };
+          badge.textContent = names[data.platform] || data.platform;
+          badge.className = 'platform-badge ' + data.platform;
+          badge.style.display = 'inline-flex';
+        }
+        showToast('이전 세션 복원됨', 'success');
+      } catch {}
+    }
 
     // 서버 상태 체크
     async function checkHealth() {
@@ -1133,6 +1250,7 @@
     }
     checkHealth();
     setInterval(checkHealth, 30000);
+    restoreSession();
   </script>
 </body>
 </html>
