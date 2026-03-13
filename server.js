@@ -501,7 +501,7 @@ async function crawlPage(url, onProgress) {
             const res = await fetch(url);
             if (!res.ok) return null;
             const blob = await res.blob();
-            if (blob.size < 10000) return null;
+            if (blob.size < 3000) return null;
             const reader = new FileReader();
             return new Promise(resolve => {
               reader.onload = () => resolve({ data: reader.result.split(',')[1], size: blob.size, type: blob.type });
@@ -604,29 +604,39 @@ app.post('/api/analyze', withTimeout(120000), async (req, res) => {
       return res.status(400).json({ error: '스크린샷을 찾을 수 없습니다. 다시 크롤링해주세요.' });
     }
 
+    // 스크린샷 + 다운로드된 이미지 수집
     const files = fs.readdirSync(screenshotDir)
       .filter(f => f.startsWith('screenshot_'))
       .sort()
       .slice(0, 10);
 
+    const imageDir = path.join(screenshotDir, 'images');
+    let downloadedFiles = [];
+    if (fs.existsSync(imageDir)) {
+      downloadedFiles = fs.readdirSync(imageDir)
+        .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f))
+        .sort()
+        .slice(0, 8);
+    }
+
     // 이미지를 base64로 변환 (병렬 처리)
-    const imageParts = await Promise.all(files.map(async (file) => {
-      const filePath = path.join(screenshotDir, file);
+    const allFiles = [
+      ...files.map(f => path.join(screenshotDir, f)),
+      ...downloadedFiles.map(f => path.join(imageDir, f))
+    ];
+    const imageParts = await Promise.all(allFiles.map(async (filePath) => {
       const buffer = fs.readFileSync(filePath);
       const resized = await sharp(buffer)
         .resize(1000, null, { withoutEnlargement: true })
         .jpeg({ quality: 75 })
         .toBuffer();
-      return {
-        inlineData: {
-          data: resized.toString('base64'),
-          mimeType: 'image/jpeg'
-        }
-      };
+      return { inlineData: { data: resized.toString('base64'), mimeType: 'image/jpeg' } };
     }));
 
     const prompt = `당신은 10년 경력의 쇼핑몰 상세페이지 마케팅 분석 전문가입니다.
-아래 스크린샷은 하나의 상품 상세페이지를 위에서부터 순서대로 캡처한 것입니다.
+아래 이미지들은 하나의 상품 상세페이지입니다.
+- 앞 ${files.length}장: 페이지를 위에서부터 순서대로 캡처한 스크린샷
+${downloadedFiles.length > 0 ? `- 뒤 ${downloadedFiles.length}장: 페이지에서 추출한 원본 상세 이미지` : ''}
 이미지 속에 보이는 모든 텍스트, 숫자, 문구를 빠짐없이 읽고 분석하세요.
 
 ${pageData ? `\n추가 추출 텍스트:\n- 제품명: ${pageData.productName || '알 수 없음'}\n- 가격: ${pageData.price || '알 수 없음'}\n- 본문: ${(pageData.texts || []).slice(0, 50).join(' / ')}` : ''}
@@ -1213,15 +1223,27 @@ async function expandIframeContent(page) {
   } catch {}
 }
 
+// 글로벌 에러 핸들러
+app.use((err, req, res, next) => {
+  console.error('서버 오류:', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: err.message || '서버 내부 오류가 발생했습니다.' });
+  }
+});
+
 // 서버 시작
 app.listen(PORT, () => {
   console.log(`상세페이지 분석기 서버 실행중: http://localhost:${PORT}`);
 });
 
 async function shutdown() {
+  console.log('\n서버 종료 중...');
   if (browser) await browser.close().catch(() => {});
   process.exit();
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 process.on('SIGHUP', shutdown);
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
+});
