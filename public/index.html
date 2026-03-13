@@ -480,6 +480,9 @@
               <button class="btn btn-purple" id="btnGenerate" onclick="generatePage()" style="white-space:nowrap;">생성</button>
             </div>
           </div>
+          <div id="genNotice" class="card" style="border-color:#f59e0b; display:none;">
+            <div style="color:#f59e0b; font-size:13px;">먼저 URL을 크롤링하고 AI 분석을 완료해야 생성할 수 있습니다.</div>
+          </div>
           <div class="label">추가 요청사항 (선택)</div>
           <textarea class="gen-textarea" id="editInstructions" placeholder="예: 가격을 39,000원으로 / 후기 섹션 추가 / 톤을 더 고급스럽게"></textarea>
         </div>
@@ -757,9 +760,10 @@
     // ============================================================
     function renderAnalysis(a) {
       const el = document.getElementById('analysisContent');
-      let h = `<div style="display:flex; gap:8px; margin-bottom:12px; align-items:center;">
+      let h = `<div style="display:flex; gap:8px; margin-bottom:12px; align-items:center; flex-wrap:wrap;">
         <button class="btn btn-gray btn-sm" onclick="startAnalyze()" style="font-size:11px;">재분석</button>
         <button class="btn btn-gray btn-sm" onclick="startCrawl()" style="font-size:11px;">재수집</button>
+        <button class="btn btn-gray btn-sm" onclick="copyAnalysis()" style="font-size:11px;">분석 복사</button>
         <span style="margin-left:auto; font-size:11px; color:#555;">${new Date().toLocaleTimeString('ko-KR')}</span>
       </div>`;
 
@@ -929,9 +933,13 @@
       const res = await fetch('/api/history'); const data = await res.json();
       const names = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', ohouse:'오늘의집', '11st':'11번가', gmarket:'G마켓', auction:'옥션', tmon:'티몬', wemakeprice:'위메프', aliexpress:'알리', idus:'아이디어스', other:'기타' };
       list.innerHTML = (!data.history?.length) ? '<div style="padding:14px;color:#555;text-align:center;">없음</div>'
-        : data.history.map(h => `<div class="history-item" onclick="loadHistory('${esc(h.sessionId)}')">
-            <div class="name">${esc(h.productName||'(이름없음)')}</div>
-            <div class="meta">${esc(names[h.platform]||h.platform||'')} | ${esc(new Date(h.createdAt).toLocaleString('ko-KR'))}</div>
+        : data.history.map(h => `<div class="history-item" style="display:flex; align-items:start; gap:8px;">
+            <div style="flex:1; cursor:pointer;" onclick="loadHistory('${esc(h.sessionId)}')">
+              <div class="name">${esc(h.productName||'(이름없음)')}</div>
+              <div class="meta">${esc(names[h.platform]||h.platform||'')} | ${esc(new Date(h.createdAt).toLocaleString('ko-KR'))}</div>
+              ${h.url ? `<div class="meta" style="color:#3b82f6; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:240px;" title="${esc(h.url)}">${esc(h.url)}</div>` : ''}
+            </div>
+            <button onclick="event.stopPropagation(); deleteHistory('${esc(h.sessionId)}')" style="background:none; border:none; color:#555; cursor:pointer; padding:4px; font-size:14px;" title="삭제">&times;</button>
           </div>`).join('');
       list.classList.add('show');
     }
@@ -972,6 +980,15 @@
 
       renderAnalysis(data.analysis); switchTab('analysis'); showToast('불러옴', 'success');
     }
+    async function deleteHistory(sid) {
+      if (!confirm('이 히스토리를 삭제하시겠습니까?')) return;
+      try {
+        await fetch(`/api/history/${sid}`, { method: 'DELETE' });
+        showToast('삭제됨', 'success');
+        toggleHistory(); // 목록 새로고침
+        setTimeout(() => toggleHistory(), 100);
+      } catch { showToast('삭제 실패', 'error'); }
+    }
     document.addEventListener('click', e => { if (!e.target.closest('.history-dropdown')) document.getElementById('historyList').classList.remove('show'); });
 
     // ============================================================
@@ -993,6 +1010,9 @@
       document.querySelectorAll('.tab-panel').forEach(t => t.classList.remove('active'));
       document.querySelector(`[data-tab="${name}"]`).classList.add('active');
       document.getElementById(`tab-${name}`).classList.add('active');
+      // 생성 탭: 분석 미완료 시 안내
+      const notice = document.getElementById('genNotice');
+      if (notice) notice.style.display = (name === 'generate' && !currentAnalysis) ? 'block' : 'none';
     }
 
     function setProgress(show, pct, text) {
@@ -1012,6 +1032,18 @@
     }
 
     function esc(s) { if (!s || s === 'null' || s === 'undefined') return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
+
+    function copyAnalysis() {
+      if (!currentAnalysis) return showToast('분석 데이터 없음', 'error');
+      const text = JSON.stringify(currentAnalysis, null, 2);
+      navigator.clipboard.writeText(text).then(() => showToast('분석 JSON 복사됨', 'success'))
+        .catch(() => {
+          // 폴백: textarea 복사
+          const ta = document.createElement('textarea');
+          ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+          document.body.removeChild(ta); showToast('분석 JSON 복사됨', 'success');
+        });
+    }
 
     // 원본 비교 모드
     let compareMode = false;
@@ -1053,6 +1085,19 @@
     // URL 입력 Enter
     document.getElementById('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') startCrawl(); });
 
+    // URL 실시간 유효성 표시
+    document.getElementById('urlInput').addEventListener('input', (e) => {
+      const val = e.target.value.trim();
+      const bar = e.target.closest('.url-bar');
+      if (!val) { bar.style.borderColor = '#2d3140'; return; }
+      try {
+        const u = new URL(val);
+        bar.style.borderColor = ['http:', 'https:'].includes(u.protocol) ? '#10b981' : '#ef4444';
+      } catch {
+        bar.style.borderColor = val.length > 5 ? '#ef4444' : '#2d3140';
+      }
+    });
+
     // URL 붙여넣기 자동 시작
     document.getElementById('urlInput').addEventListener('paste', () => {
       setTimeout(() => {
@@ -1083,7 +1128,7 @@
         const data = await res.json();
         const dot = document.getElementById('statusDot');
         dot.style.background = data.status === 'ok' ? '#10b981' : '#ef4444';
-        dot.title = `서버 정상 | 메모리: ${data.memory} | 업타임: ${Math.floor(data.uptime/60)}분`;
+        dot.title = `서버 정상 | 메모리: ${data.memory} | 업타임: ${Math.floor(data.uptime/60)}분 | 크롤링: ${data.activeCrawls || 0}/${2}`;
       } catch { document.getElementById('statusDot').style.background = '#ef4444'; }
     }
     checkHealth();

@@ -21,6 +21,19 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, 'public')));
 
+// API 요청 로깅
+app.use('/api', (req, res, next) => {
+  const start = Date.now();
+  const { method, originalUrl } = req;
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    if (originalUrl !== '/api/health') {
+      console.log(`[${new Date().toLocaleTimeString('ko-KR')}] ${method} ${originalUrl} → ${res.statusCode} (${ms}ms)`);
+    }
+  });
+  next();
+});
+
 // 요청 타임아웃 미들웨어
 function withTimeout(ms) {
   return (req, res, next) => {
@@ -56,6 +69,11 @@ let browser = null;
 let browserLaunching = null;
 
 async function getBrowser() {
+  // 브라우저가 죽었으면 참조 정리
+  if (browser && !browser.isConnected()) {
+    console.log('브라우저 연결 끊김 감지, 재시작...');
+    browser = null;
+  }
   if (browser && browser.isConnected()) return browser;
   if (browserLaunching) return browserLaunching;
   browserLaunching = (async () => {
@@ -965,6 +983,7 @@ app.get('/api/history', (req, res) => {
           sessionId: data.sessionId,
           productName: data.productName,
           platform: data.platform,
+          url: data.url || '',
           createdAt: data.createdAt
         }];
       } catch {
@@ -991,6 +1010,20 @@ app.get('/api/history/:sessionId', (req, res) => {
   }
 });
 
+app.delete('/api/history/:sessionId', (req, res) => {
+  if (!isValidSessionId(req.params.sessionId)) return res.status(400).json({ error: '유효하지 않은 sessionId' });
+  try {
+    const histFile = path.join(DIRS.history, `${req.params.sessionId}.json`);
+    const ssDir = path.join(DIRS.screenshots, req.params.sessionId);
+    if (fs.existsSync(histFile)) fs.unlinkSync(histFile);
+    if (fs.existsSync(ssDir)) fs.rmSync(ssDir, { recursive: true, force: true });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('히스토리 삭제 오류:', err);
+    res.status(500).json({ error: '삭제 실패' });
+  }
+});
+
 // ============================================================
 // 7) 분석 결과 JSON 내보내기
 // ============================================================
@@ -1014,6 +1047,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     uptime: process.uptime(),
     browserConnected: !!(browser && browser.isConnected()),
+    activeCrawls,
     memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB'
   });
 });
