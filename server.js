@@ -226,14 +226,32 @@ async function crawlPage(url, onProgress, abortSignal) {
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.waitForTimeout(3000);
 
-    // 봇 탐지 체크
-    const isBlocked = await page.evaluate(() => {
+    // 봇 탐지 + 사이트 에러 페이지 체크
+    const pageCheck = await page.evaluate(() => {
       const text = document.body?.innerText || '';
-      return text.includes('Access Denied') || text.includes('보안 확인') ||
+      const title = document.title || '';
+      // 봇 차단
+      const isBot = text.includes('Access Denied') || text.includes('보안 확인') ||
              text.includes('captcha') || text.includes('robot') ||
              text.includes('차단') || text.includes('접근이 거부');
+      // 사이트 자체 에러 페이지 (404, 종료 등)
+      const isError = text.includes('페이지에 접근할 수 없') || text.includes('찾을 수 없') ||
+             text.includes('존재하지 않') || text.includes('삭제된 페이지') ||
+             text.includes('종료된 캠페인') || text.includes('판매 종료') ||
+             text.includes('Page Not Found') || (text.includes('404') && text.length < 2000) ||
+             title.includes('404') || title.includes('Error') ||
+             text.includes('서비스 점검') || text.includes('접근할 수 없어요') ||
+             text.includes('문제가 발생했어요') || text.includes('일시적인 오류') ||
+             text.includes('잠시 후 다시') && text.length < 3000;
+      return { isBot, isError, textLength: text.length, title };
     });
-    if (isBlocked) {
+
+    if (pageCheck.isError) {
+      console.log(`사이트 에러 페이지 감지: "${pageCheck.title}" (텍스트 ${pageCheck.textLength}자)`);
+      throw new Error('해당 페이지를 찾을 수 없습니다. URL이 유효한지, 종료된 상품/캠페인이 아닌지 확인해주세요.');
+    }
+
+    if (pageCheck.isBot) {
       const pageTitle = await page.title();
       console.log(`봇 탐지됨 (${pageTitle}), 대기 후 재시도...`);
       await page.waitForTimeout(5000);
@@ -563,6 +581,10 @@ async function crawlPage(url, onProgress, abortSignal) {
     };
   } catch (err) {
     console.error('크롤링 오류:', err);
+    // 이미 사용자 친화적 메시지면 그대로 전달
+    if (err.message?.includes('URL') || err.message?.includes('페이지를 찾을 수') || err.message?.includes('동시 크롤링')) {
+      throw err;
+    }
     const msg = err.message?.includes('timeout') ? '페이지 로딩 시간 초과. 다시 시도해주세요.' : '크롤링 중 오류가 발생했습니다.';
     throw new Error(msg);
   } finally {
@@ -1123,7 +1145,7 @@ function detectPlatform(url) {
   const platforms = [
     ['coupang.com', 'coupang'],
     ['smartstore.naver.com', 'naver'], ['shopping.naver.com', 'naver'], ['brand.naver.com', 'naver'],
-    ['wadiz.kr', 'wadiz'],
+    ['wadiz.kr', 'wadiz'], ['wadiz.kr/funding', 'wadiz'],
     ['11st.co.kr', '11st'],
     ['gmarket.co.kr', 'gmarket'],
     ['auction.co.kr', 'auction'],

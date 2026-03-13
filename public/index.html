@@ -539,13 +539,13 @@
         <!-- 미리보기 탭 -->
         <div class="tab-panel" id="tab-preview">
           <div style="display:flex; gap:8px; margin-bottom:12px;">
-            <button class="btn btn-gray btn-sm" onclick="switchTab('generate')">다시 생성</button>
-            <button class="btn btn-gray btn-sm" onclick="editHtml()">HTML 편집</button>
-            <button class="btn btn-gray btn-sm" onclick="exportAnalysisJson()">JSON 저장</button>
-            <button class="btn btn-gray btn-sm" onclick="downloadHtml()">HTML 저장</button>
-            <button class="btn btn-gray btn-sm" onclick="copyHtmlToClipboard()">HTML 복사</button>
+            <button class="btn btn-gray btn-sm" id="btnRegenerate" onclick="switchTab('generate')">다시 생성</button>
+            <button class="btn btn-gray btn-sm" id="btnEditHtml" onclick="editHtml()">HTML 편집</button>
+            <button class="btn btn-gray btn-sm" id="btnExportJson" onclick="exportAnalysisJson()">JSON 저장</button>
+            <button class="btn btn-gray btn-sm" id="btnDownloadHtml" onclick="downloadHtml()">HTML 저장</button>
+            <button class="btn btn-gray btn-sm" id="btnCopyHtml" onclick="copyHtmlToClipboard()">HTML 복사</button>
             <button class="btn btn-gray btn-sm" id="btnCompare" onclick="toggleCompare()" style="display:none;">원본 비교</button>
-            <button class="btn btn-gray btn-sm" onclick="openFullPreview()" title="새 창에서 열기">전체화면</button>
+            <button class="btn btn-gray btn-sm" id="btnFullPreview" onclick="openFullPreview()" title="새 창에서 열기">전체화면</button>
             <button class="btn btn-green btn-sm" id="btnExportJpg" onclick="exportJpg(this)" style="margin-left:auto;">JPG 내보내기</button>
           </div>
           <div class="preview-wrap" id="previewWrap">
@@ -741,9 +741,21 @@
       currentPageData = crawl.pageData;
       window._screenshotCount = crawl.screenshotCount;
       renderScreenshots(crawl);
+
+      // 크롤링 품질 경고
+      const textLen = (crawl.pageData?.texts || []).join('').length;
+      const imgCount = (crawl.downloadedImages || []).length;
+      let warning = '';
+      if (crawl.screenshotCount <= 1 && textLen < 200) {
+        warning = ' (페이지 내용이 적습니다 — 에러 페이지이거나 로그인이 필요한 페이지일 수 있습니다)';
+      } else if (imgCount === 0 && crawl.screenshotCount <= 2) {
+        warning = ' (이미지가 적습니다 — 상세 이미지가 제대로 로드되지 않았을 수 있습니다)';
+      }
+
       setProgress(true, 100, `이미지 ${crawl.screenshotCount}장 캡처 완료`);
       setTimeout(() => setProgress(false), 1500);
-      showToast(`${crawl.screenshotCount}장 캡처 — "AI 분석" 버튼을 눌러주세요`, 'success');
+      const toastType = warning ? 'error' : 'success';
+      showToast(`${crawl.screenshotCount}장 캡처${warning || ' — "AI 분석" 버튼을 눌러주세요'}`, toastType);
       btnAnalyze.style.display = 'inline-flex';
       btnCrawl.disabled = false;
       btnCrawl.textContent = '이미지 가져오기';
