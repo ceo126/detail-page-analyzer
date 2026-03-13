@@ -151,7 +151,11 @@ async function callGemini(prompt, imageParts = [], maxRetries = 2) {
     } catch (err) {
       lastError = err;
       console.error(`Gemini API 오류 (시도 ${i + 1}/${maxRetries + 1}):`, err.message);
-      if (i < maxRetries) await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+      if (i < maxRetries) {
+        // 429 (quota exceeded)는 더 길게 대기
+        const baseDelay = err.status === 429 ? 10000 : 2000;
+        await new Promise(r => setTimeout(r, baseDelay * (i + 1)));
+      }
     }
   }
   throw lastError;
@@ -249,14 +253,15 @@ async function crawlPage(url, onProgress, abortSignal) {
              text.includes('captcha') || text.includes('robot') ||
              text.includes('차단') || text.includes('접근이 거부');
       // 사이트 자체 에러 페이지 (404, 종료 등)
-      const isError = text.includes('페이지에 접근할 수 없') || text.includes('찾을 수 없') ||
-             text.includes('존재하지 않') || text.includes('삭제된 페이지') ||
-             text.includes('종료된 캠페인') || text.includes('판매 종료') ||
+      // 짧은 페이지에서만 에러 판정 (본문이 긴 정상 페이지의 거짓양성 방지)
+      const isShortPage = text.length < 3000;
+      const isError = text.includes('페이지에 접근할 수 없') || text.includes('존재하지 않') ||
+             text.includes('삭제된 페이지') || text.includes('종료된 캠페인') || text.includes('판매 종료') ||
              text.includes('Page Not Found') || (text.includes('404') && text.length < 2000) ||
              title.includes('404') || title.includes('Error') ||
-             text.includes('서비스 점검') || text.includes('접근할 수 없어요') ||
-             text.includes('문제가 발생했어요') || text.includes('일시적인 오류') ||
-             text.includes('잠시 후 다시') && text.length < 3000;
+             (isShortPage && (text.includes('찾을 수 없') || text.includes('서비스 점검') ||
+               text.includes('접근할 수 없어요') || text.includes('문제가 발생했어요') ||
+               text.includes('일시적인 오류') || text.includes('잠시 후 다시')));
       return { isBot, isError, textLength: text.length, title };
     });
 
@@ -630,7 +635,7 @@ async function crawlPage(url, onProgress, abortSignal) {
         totalDownloadBytes += result.size;
         const ext = result.type.includes('png') ? 'png' : result.type.includes('webp') ? 'webp' : 'jpg';
         const imgPath = path.join(imageDir, `img_${idx}.${ext}`);
-        fs.writeFileSync(imgPath, Buffer.from(result.data, 'base64'));
+        await fs.promises.writeFile(imgPath, Buffer.from(result.data, 'base64'));
         downloadedImages.push({
           index: idx,
           url: imgUrl,
@@ -656,7 +661,8 @@ async function crawlPage(url, onProgress, abortSignal) {
   } catch (err) {
     console.error('크롤링 오류:', err);
     // 이미 사용자 친화적 메시지면 그대로 전달
-    if (err.message?.includes('URL') || err.message?.includes('페이지를 찾을 수') || err.message?.includes('동시 크롤링')) {
+    if (err.message?.includes('URL') || err.message?.includes('페이지를 찾을 수') ||
+        err.message?.includes('동시 크롤링') || err.message?.includes('취소')) {
       throw err;
     }
     const msg = err.message?.includes('timeout') ? '페이지 로딩 시간 초과. 다시 시도해주세요.' : '크롤링 중 오류가 발생했습니다.';
@@ -746,7 +752,7 @@ app.post('/api/analyze', withTimeout(120000), async (req, res) => {
     // 스크린샷 + 다운로드된 이미지 수집
     const files = fs.readdirSync(screenshotDir)
       .filter(f => f.startsWith('screenshot_'))
-      .sort()
+      .sort(numericSort)
       .slice(0, 10);
 
     const imageDir = path.join(screenshotDir, 'images');
@@ -764,8 +770,7 @@ app.post('/api/analyze', withTimeout(120000), async (req, res) => {
       ...downloadedFiles.map(f => path.join(imageDir, f))
     ];
     const imageParts = await Promise.all(allFiles.map(async (filePath) => {
-      const buffer = fs.readFileSync(filePath);
-      const resized = await sharp(buffer)
+      const resized = await sharp(filePath)
         .resize(1000, null, { withoutEnlargement: true })
         .jpeg({ quality: 75 })
         .toBuffer();
@@ -909,8 +914,6 @@ app.post('/api/generate', withTimeout(120000), async (req, res) => {
       const historyFile = path.join(DIRS.history, `${reqSessionId}.json`);
       if (fs.existsSync(historyFile)) {
         try {
-          const histData = JSON.parse(fs.readFileSync(historyFile, 'utf-8'));
-          // 다운로드된 이미지의 로컬 서빙 경로 수집
           const imgDir = path.join(DIRS.screenshots, reqSessionId, 'images');
           if (fs.existsSync(imgDir)) {
             originalImageUrls = fs.readdirSync(imgDir)
@@ -932,8 +935,7 @@ app.post('/api/generate', withTimeout(120000), async (req, res) => {
           .sort()
           .slice(0, 6);
         imageParts = await Promise.all(files.map(async (file) => {
-          const buffer = fs.readFileSync(path.join(screenshotDir, file));
-          const resized = await sharp(buffer)
+          const resized = await sharp(path.join(screenshotDir, file))
             .resize(800, null, { withoutEnlargement: true })
             .jpeg({ quality: 65 })
             .toBuffer();
@@ -1024,6 +1026,7 @@ ${editInstructions}
 app.post('/api/export-jpg', withTimeout(180000), async (req, res) => {
   const { html, outputId } = req.body;
   if (!html) return res.status(400).json({ error: 'HTML 필요' });
+  if (html.length > 2 * 1024 * 1024) return res.status(400).json({ error: 'HTML이 너무 큽니다 (최대 2MB)' });
   if (outputId && !/^[\w\-]+$/.test(outputId)) return res.status(400).json({ error: '유효하지 않은 outputId' });
 
   let context = null;
@@ -1032,7 +1035,11 @@ app.post('/api/export-jpg', withTimeout(180000), async (req, res) => {
     context = await b.newContext({ viewport: { width: 860, height: 900 } });
     const page = await context.newPage();
 
-    await page.setContent(html, { waitUntil: 'networkidle' });
+    // networkidle 대신 타임아웃 제한 (외부 리소스 무한 대기 방지)
+    await Promise.race([
+      page.setContent(html, { waitUntil: 'networkidle' }),
+      new Promise(r => setTimeout(r, 15000))
+    ]);
     await page.waitForTimeout(1000);
 
     const totalHeight = await page.evaluate(() => document.body.scrollHeight);
@@ -1203,6 +1210,8 @@ function cleanupOldSessions() {
   cleanupDir(DIRS.screenshots, 24 * 60 * 60 * 1000, true);
   // output/ — 7일
   cleanupDir(DIRS.output, 7 * 24 * 60 * 60 * 1000, false);
+  // uploads/ — 7일
+  cleanupDir(DIRS.uploads, 7 * 24 * 60 * 60 * 1000, false);
   // history/ — 30일
   cleanupDir(DIRS.history, 30 * 24 * 60 * 60 * 1000, false);
 
@@ -1229,6 +1238,13 @@ function cleanupOldSessions() {
 // 서버 시작 시 + 6시간마다 정리 (비동기로 실행하여 서버 시작 차단 방지)
 setTimeout(cleanupOldSessions, 5000);
 setInterval(cleanupOldSessions, 6 * 60 * 60 * 1000);
+
+// 스크린샷 파일명 숫자순 정렬 (screenshot_2 < screenshot_10)
+function numericSort(a, b) {
+  const na = parseInt(a.match(/\d+/)?.[0] || '0');
+  const nb = parseInt(b.match(/\d+/)?.[0] || '0');
+  return na - nb;
+}
 
 // sessionId 생성: 타임스탬프_플랫폼_제품명
 function buildSessionId(platform, name) {

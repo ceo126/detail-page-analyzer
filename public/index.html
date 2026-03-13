@@ -614,6 +614,9 @@
     let currentHtml = null;
     let currentOutputId = null;
 
+    // 플랫폼 이름 맵 (공용)
+    const PLATFORM_NAMES = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', ohouse:'오늘의집', '11st':'11번가', gmarket:'G마켓', auction:'옥션', tmon:'티몬', wemakeprice:'위메프', aliexpress:'알리', idus:'아이디어스', other:'기타' };
+
     // ============================================================
     // 패널 리사이저
     // ============================================================
@@ -871,8 +874,7 @@
       area.innerHTML = html;
 
       const badge = document.getElementById('platformBadge');
-      const names = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', ohouse:'오늘의집', '11st':'11번가', gmarket:'G마켓', auction:'옥션', tmon:'티몬', wemakeprice:'위메프', aliexpress:'알리', idus:'아이디어스', other:'기타' };
-      badge.textContent = names[crawl.platform] || crawl.platform;
+      badge.textContent = PLATFORM_NAMES[crawl.platform] || crawl.platform;
       badge.className = 'platform-badge ' + crawl.platform;
       badge.style.display = 'inline-flex';
     }
@@ -1059,6 +1061,8 @@
           time: new Date().toLocaleTimeString('ko-KR'),
           sec: genSec
         });
+        // 최대 10개만 유지 (HTML 문자열 메모리 누적 방지)
+        if (generationHistory.length > 10) generationHistory.length = 10;
         renderGenHistory();
       } catch (err) { showToast(err.message, 'error'); setProgress(false); }
       finally { btn.disabled = false; btn.textContent = '생성'; }
@@ -1127,7 +1131,11 @@
     async function toggleHistory() {
       const list = document.getElementById('historyList');
       if (list.classList.contains('show')) { list.classList.remove('show'); return; }
-      const res = await fetch('/api/history'); const data = await res.json();
+      let data;
+      try {
+        const res = await fetch('/api/history');
+        data = await res.json();
+      } catch { return showToast('서버 연결 실패', 'error'); }
       historyCache = data.history || [];
       renderHistoryList('');
       list.classList.add('show');
@@ -1136,7 +1144,7 @@
     }
     function renderHistoryList(query) {
       const list = document.getElementById('historyList');
-      const names = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', ohouse:'오늘의집', '11st':'11번가', gmarket:'G마켓', auction:'옥션', tmon:'티몬', wemakeprice:'위메프', aliexpress:'알리', idus:'아이디어스', other:'기타' };
+      const names = PLATFORM_NAMES;
       const q = query.toLowerCase();
       const filtered = q ? historyCache.filter(h =>
         (h.productName || '').toLowerCase().includes(q) ||
@@ -1167,7 +1175,11 @@
     }
     async function loadHistory(sid) {
       document.getElementById('historyList').classList.remove('show');
-      const res = await fetch(`/api/history/${sid}`); const data = await res.json();
+      let data;
+      try {
+        const res = await fetch(`/api/history/${sid}`);
+        data = await res.json();
+      } catch { return showToast('서버 연결 실패', 'error'); }
       if (!data.success) return showToast(data.error, 'error');
       currentSessionId = data.sessionId; currentAnalysis = data.analysis;
 
@@ -1194,7 +1206,7 @@
       // 플랫폼 뱃지 표시
       if (data.platform) {
         const badge = document.getElementById('platformBadge');
-        const names = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', ohouse:'오늘의집', '11st':'11번가', gmarket:'G마켓', auction:'옥션', tmon:'티몬', wemakeprice:'위메프', aliexpress:'알리', idus:'아이디어스', other:'기타' };
+        const names = PLATFORM_NAMES;
         badge.textContent = names[data.platform] || data.platform;
         badge.className = 'platform-badge ' + data.platform;
         badge.style.display = 'inline-flex';
@@ -1435,7 +1447,7 @@
         }
         if (data.platform) {
           const badge = document.getElementById('platformBadge');
-          const names = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', ohouse:'오늘의집', '11st':'11번가', gmarket:'G마켓', auction:'옥션', tmon:'티몬', wemakeprice:'위메프', aliexpress:'알리', idus:'아이디어스', other:'기타' };
+          const names = PLATFORM_NAMES;
           badge.textContent = names[data.platform] || data.platform;
           badge.className = 'platform-badge ' + data.platform;
           badge.style.display = 'inline-flex';
