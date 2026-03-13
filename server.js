@@ -31,14 +31,31 @@ app.use('/output', express.static(DIRS.output));
 app.use('/screenshots', express.static(DIRS.screenshots));
 app.use('/uploads', express.static(DIRS.uploads));
 
-// 브라우저 관리
+// 브라우저 관리 (싱글톤 브라우저 + 스텔스)
 let browser = null;
 let browserLaunching = null;
 
 async function getBrowser() {
   if (browser && browser.isConnected()) return browser;
   if (browserLaunching) return browserLaunching;
-  browserLaunching = chromium.launch({ headless: true }).then(b => {
+  browserLaunching = (async () => {
+    const args = [
+      '--disable-blink-features=AutomationControlled',
+      '--no-sandbox',
+      '--disable-infobars',
+      '--disable-dev-shm-usage',
+      '--window-size=1400,900',
+    ];
+    try {
+      const b = await chromium.launch({ headless: true, channel: 'chrome', args });
+      console.log('브라우저: 시스템 Chrome (headless)');
+      return b;
+    } catch {
+      const b = await chromium.launch({ headless: true, args });
+      console.log('브라우저: Playwright Chromium (headless)');
+      return b;
+    }
+  })().then(b => {
     browser = b;
     browserLaunching = null;
     return b;
@@ -48,6 +65,41 @@ async function getBrowser() {
   });
   return browserLaunching;
 }
+
+async function createStealthContext(b, opts = {}) {
+  const context = await b.newContext({
+    viewport: { width: 1400, height: 900 },
+    locale: 'ko-KR',
+    timezoneId: 'Asia/Seoul',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+    ...opts,
+  });
+  await context.addInitScript(STEALTH_SCRIPTS.join('\n'));
+  return context;
+}
+
+// 자동화 흔적 제거 스크립트
+const STEALTH_SCRIPTS = [
+  // navigator.webdriver 숨기기
+  `Object.defineProperty(navigator, 'webdriver', { get: () => undefined });`,
+  // Chrome runtime 위장
+  `window.chrome = { runtime: {}, loadTimes: function(){}, csi: function(){} };`,
+  // permissions 위장
+  `const originalQuery = window.navigator.permissions.query;
+   window.navigator.permissions.query = (parameters) =>
+     parameters.name === 'notifications'
+       ? Promise.resolve({ state: Notification.permission })
+       : originalQuery(parameters);`,
+  // plugins 위장
+  `Object.defineProperty(navigator, 'plugins', {
+    get: () => [1,2,3,4,5].map(() => ({
+      0: { type: 'application/x-google-chrome-pdf' },
+      length: 1, item: () => null, namedItem: () => null
+    }))
+  });`,
+  // languages 위장
+  `Object.defineProperty(navigator, 'languages', { get: () => ['ko-KR', 'ko', 'en-US', 'en'] });`,
+];
 
 // Gemini API 호출 (자동 재시도)
 async function callGemini(prompt, imageParts = [], maxRetries = 2) {
@@ -94,27 +146,62 @@ app.post('/api/crawl', async (req, res) => {
   let context = null;
   try {
     const b = await getBrowser();
-    context = await b.newContext({
-      viewport: { width: 1400, height: 900 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-      extraHTTPHeaders: {
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-        'sec-ch-ua-platform': '"Windows"',
-      }
-    });
+    context = await createStealthContext(b);
     const page = await context.newPage();
+
+    // 추가 헤더 설정
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+      'sec-ch-ua': '"Chromium";v="134", "Google Chrome";v="134", "Not:A-Brand";v="24"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
+    });
 
     // 팝업/다이얼로그 자동 닫기
     page.on('dialog', async dialog => {
       await dialog.dismiss().catch(() => {});
     });
 
-    // domcontentloaded로 먼저 로드 후, networkidle 대기 시도 (실패해도 진행)
+    // ============================================================
+    // 네트워크 인터셉트: goto 전에 등록하여 모든 이미지 URL 수집
+    // ============================================================
+    const networkImages = new Set();
+    page.on('response', async (response) => {
+      try {
+        const ct = response.headers()['content-type'] || '';
+        const respUrl = response.url();
+        if (ct.startsWith('image/') && response.status() === 200) {
+          const contentLength = parseInt(response.headers()['content-length'] || '0');
+          if (contentLength > 5000 || contentLength === 0) {
+            if (!respUrl.includes('icon') && !respUrl.includes('logo') && !respUrl.includes('pixel') &&
+                !respUrl.includes('tracker') && !respUrl.includes('beacon') && !respUrl.includes('.svg')) {
+              networkImages.add(respUrl);
+            }
+          }
+        }
+      } catch {}
+    });
+
+    // 페이지 로딩
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.waitForTimeout(3000);
+
+    // 봇 탐지 체크
+    const isBlocked = await page.evaluate(() => {
+      const text = document.body?.innerText || '';
+      return text.includes('Access Denied') || text.includes('보안 확인') ||
+             text.includes('captcha') || text.includes('robot') ||
+             text.includes('차단') || text.includes('접근이 거부');
+    });
+    if (isBlocked) {
+      const pageTitle = await page.title();
+      console.log(`봇 탐지됨 (${pageTitle}), 대기 후 재시도...`);
+      await page.waitForTimeout(5000);
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+      await page.waitForLoadState('networkidle').catch(() => {});
+      await page.waitForTimeout(3000);
+    }
 
     // 플랫폼 감지
     const platform = detectPlatform(url);
@@ -125,38 +212,23 @@ app.post('/api/crawl', async (req, res) => {
     // "더보기"/"상세정보" 버튼 클릭하여 숨겨진 콘텐츠 펼치기
     await expandDetailContent(page, platform);
 
-    // ============================================================
-    // 네트워크 인터셉트: 브라우저가 실제 로딩하는 이미지 URL 수집
-    // ============================================================
-    const networkImages = new Set();
-    page.on('response', async (response) => {
-      try {
-        const ct = response.headers()['content-type'] || '';
-        const url = response.url();
-        if (ct.startsWith('image/') && response.status() === 200) {
-          const contentLength = parseInt(response.headers()['content-length'] || '0');
-          // 5KB 이상 이미지만 (아이콘/트래커 제외)
-          if (contentLength > 5000 || contentLength === 0) {
-            if (!url.includes('icon') && !url.includes('logo') && !url.includes('pixel') &&
-                !url.includes('tracker') && !url.includes('beacon') && !url.includes('.svg')) {
-              networkImages.add(url);
-            }
-          }
-        }
-      } catch {}
-    });
-
-    // ============================================================
     // iframe 내 상세 이미지가 있으면 메인 페이지에 펼치기
-    // ============================================================
     await expandIframeContent(page);
 
     // ============================================================
-    // 전체 스크롤 가능 높이 파악 (body vs 내부 스크롤 컨테이너)
+    // 1단계: 전체 스크롤하여 lazy-load 콘텐츠 모두 로딩
+    // ============================================================
+    await autoScroll(page);
+    await page.waitForTimeout(2000);
+
+    // ============================================================
+    // 전체 스크롤 가능 높이 파악 (auto-scroll 후 측정)
     // ============================================================
     const scrollInfo = await page.evaluate(() => {
-      // body 스크롤 높이 체크
-      let scrollHeight = document.body.scrollHeight;
+      let scrollHeight = Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight
+      );
       let scrollContainer = null;
 
       // body가 뷰포트와 같으면 → 내부 스크롤 컨테이너 탐색
@@ -166,7 +238,6 @@ app.post('/api/crawl', async (req, res) => {
         for (const el of candidates) {
           if (el.scrollHeight > el.clientHeight + 100 && el.scrollHeight > maxH) {
             maxH = el.scrollHeight;
-            // CSS selector 생성
             scrollContainer = el.id ? '#' + el.id :
               el.className ? '.' + el.className.split(' ')[0] : null;
             scrollHeight = maxH;
@@ -180,18 +251,12 @@ app.post('/api/crawl', async (req, res) => {
     console.log(`스크롤 정보: 높이=${scrollInfo.scrollHeight}px, 컨테이너=${scrollInfo.scrollContainer || 'body'}`);
 
     // ============================================================
-    // 실제 스크롤하며 뷰포트 단위 스크린샷 캡처
+    // 2단계: 맨 위로 돌아가서 뷰포트 단위 스크린샷 캡처
     // ============================================================
     const sessionId = Date.now().toString();
     const screenshotDir = path.join(DIRS.screenshots, sessionId);
     fs.mkdirSync(screenshotDir, { recursive: true });
 
-    const scrollStep = 700;
-    let scrollY = 0;
-    let chunkIndex = 0;
-    const maxChunks = 30;
-    let lastScrollTop = -1;
-    let staleCount = 0;
     const containerSel = scrollInfo.scrollContainer;
 
     // 맨 위로 이동
@@ -204,77 +269,88 @@ app.post('/api/crawl', async (req, res) => {
     }, containerSel);
     await page.waitForTimeout(500);
 
-    while (chunkIndex < maxChunks) {
-      // 현재 뷰포트에서 보이는 이미지들 로딩 대기
-      await page.evaluate(() => {
-        return Promise.all(
-          Array.from(document.querySelectorAll('img')).filter(img => {
-            const rect = img.getBoundingClientRect();
-            return rect.top < window.innerHeight + 200 && rect.bottom > -200;
-          }).map(img => {
-            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-            return new Promise(resolve => {
-              img.onload = resolve;
-              img.onerror = resolve;
-              setTimeout(resolve, 3000);
-            });
-          })
-        );
-      }).catch(() => {});
-      await page.waitForTimeout(300);
+    // 페이지가 짧으면 fullPage 스크린샷 한 장으로 처리
+    const useFullPage = scrollInfo.scrollHeight <= scrollInfo.viewportHeight * 3 && !containerSel;
+    let numChunks = 0;
 
-      // 스크린샷 캡처
-      const chunkPath = path.join(screenshotDir, `screenshot_${chunkIndex}.jpg`);
-      await page.screenshot({ type: 'jpeg', quality: 80, path: chunkPath });
-      chunkIndex++;
+    if (useFullPage) {
+      const chunkPath = path.join(screenshotDir, 'screenshot_0.jpg');
+      await page.screenshot({ type: 'jpeg', quality: 80, path: chunkPath, fullPage: true });
+      numChunks = 1;
+    } else {
+      const scrollStep = 700;
+      let scrollY = 0;
+      let chunkIndex = 0;
+      const maxChunks = 30;
+      let lastScrollTop = -1;
+      let staleCount = 0;
 
-      // 다음 위치로 스크롤 (body 또는 내부 컨테이너)
-      scrollY += scrollStep;
-      const scrollResult = await page.evaluate(({ sel, y }) => {
-        let scrollTop, scrollHeight, clientHeight;
-        if (sel) {
-          const el = document.querySelector(sel);
-          if (el) {
-            el.scrollTop = y;
-            scrollTop = el.scrollTop;
-            scrollHeight = el.scrollHeight;
-            clientHeight = el.clientHeight;
-            return { scrollTop, scrollHeight, clientHeight };
-          }
-        }
-        window.scrollTo(0, y);
-        return {
-          scrollTop: window.scrollY || document.documentElement.scrollTop,
-          scrollHeight: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
-          clientHeight: window.innerHeight
-        };
-      }, { sel: containerSel, y: scrollY });
-      await page.waitForTimeout(200);
+      while (chunkIndex < maxChunks) {
+        // 현재 뷰포트 이미지 로딩 대기
+        await page.evaluate(() => {
+          return Promise.all(
+            Array.from(document.querySelectorAll('img')).filter(img => {
+              const rect = img.getBoundingClientRect();
+              return rect.top < window.innerHeight + 200 && rect.bottom > -200;
+            }).map(img => {
+              if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+              return new Promise(resolve => {
+                img.onload = resolve;
+                img.onerror = resolve;
+                setTimeout(resolve, 3000);
+              });
+            })
+          );
+        }).catch(() => {});
+        await page.waitForTimeout(300);
 
-      // 스크롤이 안 움직이면 (끝에 도달) 종료
-      if (scrollResult.scrollTop === lastScrollTop) {
-        staleCount++;
-        if (staleCount >= 2) break;
-      } else {
-        staleCount = 0;
-      }
-      lastScrollTop = scrollResult.scrollTop;
-
-      // 끝 도달 체크
-      if (scrollResult.scrollTop + scrollResult.clientHeight >= scrollResult.scrollHeight - 50) {
-        await page.waitForTimeout(400);
-        const lastPath = path.join(screenshotDir, `screenshot_${chunkIndex}.jpg`);
-        await page.screenshot({ type: 'jpeg', quality: 80, path: lastPath });
+        // 스크린샷
+        const chunkPath = path.join(screenshotDir, `screenshot_${chunkIndex}.jpg`);
+        await page.screenshot({ type: 'jpeg', quality: 80, path: chunkPath });
         chunkIndex++;
-        break;
+
+        // 스크롤
+        scrollY += scrollStep;
+        const scrollResult = await page.evaluate(({ sel, y }) => {
+          if (sel) {
+            const el = document.querySelector(sel);
+            if (el) {
+              el.scrollTop = y;
+              return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight };
+            }
+          }
+          window.scrollTo(0, y);
+          return {
+            scrollTop: window.scrollY || document.documentElement.scrollTop,
+            scrollHeight: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+            clientHeight: window.innerHeight
+          };
+        }, { sel: containerSel, y: scrollY });
+        await page.waitForTimeout(200);
+
+        if (scrollResult.scrollTop === lastScrollTop) {
+          staleCount++;
+          if (staleCount >= 2) break;
+        } else {
+          staleCount = 0;
+        }
+        lastScrollTop = scrollResult.scrollTop;
+
+        if (scrollResult.scrollTop + scrollResult.clientHeight >= scrollResult.scrollHeight - 50) {
+          await page.waitForTimeout(400);
+          const lastPath = path.join(screenshotDir, `screenshot_${chunkIndex}.jpg`);
+          await page.screenshot({ type: 'jpeg', quality: 80, path: lastPath });
+          chunkIndex++;
+          break;
+        }
       }
+      numChunks = chunkIndex;
     }
 
     const totalHeight = scrollInfo.scrollHeight;
-    const numChunks = chunkIndex;
 
     // ============================================================
-    // 텍스트 + 이미지 URL 추출 (스크롤 완료 후)
+    // 텍스트 + 이미지 URL 추출
     // ============================================================
     await page.evaluate((sel) => {
       if (sel) {
@@ -402,30 +478,37 @@ app.post('/api/crawl', async (req, res) => {
     const imageDir = path.join(screenshotDir, 'images');
     fs.mkdirSync(imageDir, { recursive: true });
 
+    // 페이지에서 직접 이미지를 fetch (같은 세션 쿠키 공유)
     const downloadPromises = pageData.images.slice(0, 30).map(async (imgUrl, idx) => {
       try {
-        const response = await page.context().request.get(imgUrl, { timeout: 8000 });
-        if (response.ok()) {
-          const buffer = await response.body();
-          // 10KB 이상 이미지만 저장
-          if (buffer.length > 10000) {
-            const ext = imgUrl.match(/\.(jpg|jpeg|png|webp|gif)/i)?.[1] || 'jpg';
-            const imgPath = path.join(imageDir, `img_${idx}.${ext}`);
-            fs.writeFileSync(imgPath, buffer);
-            downloadedImages.push({
-              index: idx,
-              url: imgUrl,
-              localPath: `/screenshots/${sessionId}/images/img_${idx}.${ext}`,
-              size: buffer.length
+        const result = await page.evaluate(async (url) => {
+          try {
+            const res = await fetch(url);
+            if (!res.ok) return null;
+            const blob = await res.blob();
+            if (blob.size < 10000) return null;
+            const reader = new FileReader();
+            return new Promise(resolve => {
+              reader.onload = () => resolve({ data: reader.result.split(',')[1], size: blob.size, type: blob.type });
+              reader.readAsDataURL(blob);
             });
-          }
+          } catch { return null; }
+        }, imgUrl);
+
+        if (result) {
+          const ext = result.type.includes('png') ? 'png' : result.type.includes('webp') ? 'webp' : 'jpg';
+          const imgPath = path.join(imageDir, `img_${idx}.${ext}`);
+          fs.writeFileSync(imgPath, Buffer.from(result.data, 'base64'));
+          downloadedImages.push({
+            index: idx,
+            url: imgUrl,
+            localPath: `/screenshots/${sessionId}/images/img_${idx}.${ext}`,
+            size: result.size
+          });
         }
       } catch {}
     });
     await Promise.all(downloadPromises);
-
-    await context.close();
-    context = null;
 
     console.log(`크롤링 완료: 스크린샷 ${numChunks}장, 이미지 ${downloadedImages.length}개 다운로드, 전체 높이 ${totalHeight}px`);
 
@@ -703,9 +786,7 @@ app.post('/api/export-jpg', async (req, res) => {
   let context = null;
   try {
     const b = await getBrowser();
-    context = await b.newContext({
-      viewport: { width: 860, height: 900 }
-    });
+    context = await b.newContext({ viewport: { width: 860, height: 900 } });
     const page = await context.newPage();
 
     await page.setContent(html, { waitUntil: 'networkidle' });
@@ -739,7 +820,7 @@ app.post('/api/export-jpg', async (req, res) => {
     console.error('JPG 변환 오류:', err);
     res.status(500).json({ error: 'JPG 변환 중 오류가 발생했습니다.' });
   } finally {
-    if (context) await context.close().catch(() => {});
+    if (page) await page.close().catch(() => {});
   }
 });
 
@@ -1057,7 +1138,7 @@ app.listen(PORT, () => {
 });
 
 async function shutdown() {
-  if (browser) await browser.close();
+  if (browser) await browser.close().catch(() => {});
   process.exit();
 }
 process.on('SIGINT', shutdown);
