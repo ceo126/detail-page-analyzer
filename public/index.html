@@ -544,9 +544,12 @@
             <button class="btn btn-gray btn-sm" id="btnExportJson" onclick="exportAnalysisJson()">JSON 저장</button>
             <button class="btn btn-gray btn-sm" id="btnDownloadHtml" onclick="downloadHtml()">HTML 저장</button>
             <button class="btn btn-gray btn-sm" id="btnCopyHtml" onclick="copyHtmlToClipboard()">HTML 복사</button>
+            <button class="btn btn-gray btn-sm" id="btnCleanHtml" onclick="exportCleanHtml()">쇼핑몰 HTML</button>
             <button class="btn btn-gray btn-sm" id="btnCompare" onclick="toggleCompare()" style="display:none;">원본 비교</button>
+            <button class="btn btn-gray btn-sm" id="btnAbCompare" onclick="openAbCompare()" style="display:none;">A/B 비교</button>
             <button class="btn btn-gray btn-sm" id="btnFullPreview" onclick="openFullPreview()" title="새 창에서 열기">전체화면</button>
-            <button class="btn btn-green btn-sm" id="btnExportJpg" onclick="exportJpg(this)" style="margin-left:auto;">JPG 내보내기</button>
+            <button class="btn btn-green btn-sm" id="btnExportPdf" onclick="exportPdf(this)" style="margin-left:auto;">PDF</button>
+            <button class="btn btn-green btn-sm" id="btnExportJpg" onclick="exportJpg(this)">JPG</button>
           </div>
           <div class="preview-wrap" id="previewWrap">
             <iframe id="previewFrame" style="display:none;"></iframe>
@@ -561,6 +564,13 @@
             <div style="margin-top:8px; font-size:12px; color:#666;" id="jpgInfo"></div>
             <div class="actions">
               <a id="jpgDownloadLink" href="" download><button class="btn btn-green btn-sm">다운로드</button></a>
+            </div>
+          </div>
+          <div class="jpg-result" id="pdfResult" style="display:none;">
+            <h4 style="margin-bottom:12px;">PDF 생성 완료</h4>
+            <div style="margin-top:8px; font-size:12px; color:#666;" id="pdfInfo"></div>
+            <div class="actions">
+              <a id="pdfDownloadLink" href="" download><button class="btn btn-green btn-sm">PDF 다운로드</button></a>
             </div>
           </div>
         </div>
@@ -1071,6 +1081,9 @@
     function renderGenHistory() {
       const area = document.getElementById('genHistoryArea');
       const list = document.getElementById('genHistoryList');
+      // A/B 비교 버튼: 2개 이상 생성 시 표시
+      const abBtn = document.getElementById('btnAbCompare');
+      if (abBtn) abBtn.style.display = generationHistory.length >= 2 ? 'inline-block' : 'none';
       if (generationHistory.length <= 1) { area.style.display = 'none'; return; }
       area.style.display = 'block';
       list.innerHTML = generationHistory.map((g, i) => `
@@ -1098,7 +1111,157 @@
       iframe.style.display = 'block';
       const doc = iframe.contentDocument || iframe.contentWindow.document;
       doc.open(); doc.write(html); doc.close();
-      setTimeout(() => { try { iframe.style.height = (doc.body.scrollHeight + 40) + 'px'; } catch(e){} }, 500);
+      setTimeout(() => {
+        try { iframe.style.height = (doc.body.scrollHeight + 40) + 'px'; } catch(e){}
+        injectPlaceholderHandlers();
+      }, 500);
+    }
+
+    // ============================================================
+    // 플레이스홀더 이미지 교체 기능
+    // ============================================================
+    function injectPlaceholderHandlers() {
+      const iframe = document.getElementById('previewFrame');
+      if (!iframe || !iframe.contentDocument) return;
+      const doc = iframe.contentDocument;
+
+      // data-placeholder-id가 있는 요소에 클릭 이벤트 추가
+      const placeholders = doc.querySelectorAll('[data-placeholder-id]');
+      placeholders.forEach(ph => {
+        if (ph.dataset._handlerAdded) return;
+        ph.dataset._handlerAdded = 'true';
+        ph.style.cursor = 'pointer';
+        ph.title = '클릭하여 이미지 교체';
+        // 호버 효과
+        ph.addEventListener('mouseenter', () => { ph.style.outline = '3px dashed #3b82f6'; });
+        ph.addEventListener('mouseleave', () => { ph.style.outline = ''; });
+        ph.addEventListener('click', () => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/*';
+          input.onchange = async () => {
+            const file = input.files[0];
+            if (!file) return;
+            const form = new FormData();
+            form.append('image', file);
+            try {
+              const res = await fetch('/api/upload-image', { method: 'POST', body: form });
+              const data = await res.json();
+              if (!data.success) throw new Error(data.error);
+              // 이미지 교체
+              if (ph.tagName === 'IMG') {
+                ph.src = data.url;
+              } else {
+                ph.style.backgroundImage = `url(${data.url})`;
+                ph.style.backgroundSize = 'cover';
+                ph.style.backgroundPosition = 'center';
+                ph.textContent = '';
+              }
+              ph.style.outline = '';
+              // currentHtml 업데이트
+              currentHtml = doc.documentElement.outerHTML;
+              showToast('이미지 교체 완료', 'success');
+            } catch (err) { showToast(err.message || '업로드 실패', 'error'); }
+          };
+          input.click();
+        });
+      });
+    }
+
+    // ============================================================
+    // PDF 내보내기
+    // ============================================================
+    async function exportPdf(btn) {
+      if (!currentHtml) return showToast('먼저 생성하세요', 'error');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>변환 중...';
+      try {
+        const res = await fetch('/api/export-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ html: currentHtml, outputId: currentOutputId })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        const r = document.getElementById('pdfResult'); r.style.display = 'block';
+        document.getElementById('pdfInfo').textContent = data.fileSize;
+        const link = document.getElementById('pdfDownloadLink'); link.href = data.filePath; link.download = data.fileName;
+        showToast('PDF 완료', 'success');
+      } catch (err) { showToast(err.message, 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'PDF'; }
+    }
+
+    // ============================================================
+    // 쇼핑몰용 클린 HTML (Cafe24/스마트스토어 호환)
+    // ============================================================
+    async function exportCleanHtml() {
+      if (!currentHtml) return showToast('먼저 생성하세요', 'error');
+      try {
+        const res = await fetch('/api/export-clean-html', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ html: currentHtml })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        await navigator.clipboard.writeText(data.html);
+        showToast('쇼핑몰용 HTML 복사됨 (Cafe24/스마트스토어에 붙여넣기)', 'success');
+      } catch (err) {
+        showToast(err.message || '복사 실패', 'error');
+      }
+    }
+
+    // ============================================================
+    // A/B 생성물 비교
+    // ============================================================
+    function openAbCompare() {
+      if (generationHistory.length < 2) return showToast('비교하려면 2개 이상 생성이 필요합니다', 'error');
+      const wrap = document.getElementById('previewWrap');
+      const a = generationHistory[0]; // 최신
+      const b = generationHistory[1]; // 이전
+      wrap.innerHTML = `
+        <div style="display:flex; gap:2px; width:100%;">
+          <div style="flex:1; display:flex; flex-direction:column;">
+            <div style="font-size:11px; color:#3b82f6; text-align:center; padding:4px; background:#1a1d27;">
+              A: ${esc(a.keyword)} (${a.time})
+            </div>
+            <iframe id="abFrameA" style="flex:1; width:100%; min-height:800px; border:none;"></iframe>
+          </div>
+          <div style="flex:1; display:flex; flex-direction:column;">
+            <div style="font-size:11px; color:#10b981; text-align:center; padding:4px; background:#1a1d27;">
+              B: ${esc(b.keyword)} (${b.time})
+            </div>
+            <iframe id="abFrameB" style="flex:1; width:100%; min-height:800px; border:none;"></iframe>
+          </div>
+        </div>
+        <div style="text-align:center; padding:8px;">
+          <button class="btn btn-gray btn-sm" onclick="exitAbCompare()">비교 닫기</button>
+        </div>`;
+      // 각 iframe에 HTML 삽입
+      setTimeout(() => {
+        ['A','B'].forEach((side, i) => {
+          const fr = document.getElementById('abFrame' + side);
+          const d = fr.contentDocument || fr.contentWindow.document;
+          d.open(); d.write(generationHistory[i].html); d.close();
+          setTimeout(() => { try { fr.style.height = (d.body.scrollHeight + 40) + 'px'; } catch(e){} }, 500);
+        });
+        // 동기 스크롤
+        const frameA = document.getElementById('abFrameA');
+        const frameB = document.getElementById('abFrameB');
+        if (frameA && frameB) {
+          frameA.contentWindow.addEventListener('scroll', () => {
+            frameB.contentWindow.scrollTo(0, frameA.contentWindow.scrollY);
+          });
+          frameB.contentWindow.addEventListener('scroll', () => {
+            frameA.contentWindow.scrollTo(0, frameB.contentWindow.scrollY);
+          });
+        }
+      }, 100);
+    }
+
+    function exitAbCompare() {
+      const wrap = document.getElementById('previewWrap');
+      wrap.innerHTML = '<iframe id="previewFrame" style="width:860px; min-height:800px; border:none;"></iframe>';
+      if (currentHtml) updatePreview(currentHtml);
     }
 
     // ============================================================

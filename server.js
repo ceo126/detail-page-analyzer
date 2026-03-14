@@ -1075,6 +1075,83 @@ app.post('/api/export-jpg', withTimeout(180000), async (req, res) => {
 });
 
 // ============================================================
+// 4-b) HTML → PDF 변환
+// ============================================================
+app.post('/api/export-pdf', withTimeout(180000), async (req, res) => {
+  const { html, outputId } = req.body;
+  if (!html) return res.status(400).json({ error: 'HTML 필요' });
+  if (html.length > 2 * 1024 * 1024) return res.status(400).json({ error: 'HTML이 너무 큽니다 (최대 2MB)' });
+
+  let context = null;
+  try {
+    const b = await getBrowser();
+    context = await b.newContext({ viewport: { width: 860, height: 900 } });
+    const page = await context.newPage();
+
+    await Promise.race([
+      page.setContent(html, { waitUntil: 'networkidle' }),
+      new Promise(r => setTimeout(r, 15000))
+    ]);
+    await page.waitForTimeout(1000);
+
+    const totalHeight = await page.evaluate(() => document.body.scrollHeight);
+
+    const pdfFileName = `detail_${outputId || Date.now()}.pdf`;
+    const pdfPath = path.join(DIRS.output, pdfFileName);
+
+    await page.pdf({
+      path: pdfPath,
+      width: '860px',
+      height: (totalHeight + 40) + 'px',
+      printBackground: true,
+      margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' }
+    });
+
+    await context.close();
+    context = null;
+
+    const stats = fs.statSync(pdfPath);
+    res.json({
+      success: true,
+      fileName: pdfFileName,
+      filePath: `/output/${pdfFileName}`,
+      fileSize: (stats.size / 1024 / 1024).toFixed(2) + 'MB'
+    });
+  } catch (err) {
+    console.error('PDF 변환 오류:', err);
+    res.status(500).json({ error: 'PDF 변환 중 오류가 발생했습니다.' });
+  } finally {
+    if (context) await context.close().catch(() => {});
+  }
+});
+
+// ============================================================
+// 4-c) 쇼핑몰용 클린 HTML (body 내용만 추출)
+// ============================================================
+app.post('/api/export-clean-html', (req, res) => {
+  const { html } = req.body;
+  if (!html) return res.status(400).json({ error: 'HTML 필요' });
+
+  // <body> 태그 내부만 추출, 없으면 전체 반환
+  let cleanHtml = html;
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) {
+    cleanHtml = bodyMatch[1].trim();
+  }
+
+  // <style> 태그는 유지 (inline CSS가 아닌 경우 대비)
+  const styleMatch = html.match(/<style[^>]*>[\s\S]*?<\/style>/gi);
+  if (styleMatch) {
+    cleanHtml = styleMatch.join('\n') + '\n' + cleanHtml;
+  }
+
+  // <script> 태그 제거 (쇼핑몰 에디터 호환)
+  cleanHtml = cleanHtml.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+
+  res.json({ success: true, html: cleanHtml });
+});
+
+// ============================================================
 // 5) 이미지 업로드 (플레이스홀더 교체용)
 // ============================================================
 const uploadStorage = multer.diskStorage({
