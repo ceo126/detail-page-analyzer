@@ -1637,6 +1637,14 @@
     checkHealth();
     setInterval(checkHealth, 30000);
     restoreSession();
+
+    // 페이지 이탈 시 SSE 연결 정리
+    window.addEventListener('beforeunload', () => {
+      if (currentEventSource) {
+        currentEventSource.close();
+        currentEventSource = null;
+      }
+    });
   </script>
 </body>
 </html>

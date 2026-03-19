@@ -12,7 +12,7 @@ const app = express();
 const PORT = process.env.PORT || 8150;
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '5mb' }));
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
@@ -1136,6 +1136,7 @@ app.post('/api/export-pdf', withTimeout(180000), async (req, res) => {
 app.post('/api/export-clean-html', (req, res) => {
   const { html } = req.body;
   if (!html) return res.status(400).json({ error: 'HTML 필요' });
+  if (html.length > 2 * 1024 * 1024) return res.status(400).json({ error: 'HTML이 너무 큽니다 (최대 2MB)' });
 
   // <body> 태그 내부만 추출, 없으면 전체 반환
   let cleanHtml = html;
@@ -1248,6 +1249,7 @@ app.delete('/api/history/:sessionId', (req, res) => {
 app.post('/api/export-analysis', (req, res) => {
   const { analysis, sessionId } = req.body;
   if (!analysis) return res.status(400).json({ error: '분석 데이터 필요' });
+  if (JSON.stringify(analysis).length > 2 * 1024 * 1024) return res.status(400).json({ error: '분석 데이터가 너무 큽니다' });
 
   const safeId = (sessionId && isValidSessionId(sessionId)) ? sessionId : Date.now();
   const fileName = `analysis_${safeId}.json`;
@@ -1549,6 +1551,13 @@ app.use((err, req, res, next) => {
 // 서버 시작
 const server = app.listen(PORT, () => {
   console.log(`상세페이지 분석기 서버 실행중: http://localhost:${PORT}`);
+});
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`포트 ${PORT}이(가) 이미 사용 중입니다. 다른 프로세스를 종료하거나 .env에서 PORT를 변경하세요.`);
+    process.exit(1);
+  }
+  throw err;
 });
 
 async function shutdown() {
