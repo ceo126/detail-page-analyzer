@@ -139,14 +139,18 @@ const STEALTH_SCRIPTS = [
   `Object.defineProperty(navigator, 'languages', { get: () => ['ko-KR', 'ko', 'en-US', 'en'] });`,
 ];
 
-// Gemini API 호출 (자동 재시도)
+// Gemini API 호출 (자동 재시도 + 타임아웃)
 async function callGemini(prompt, imageParts = [], maxRetries = 2) {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const TIMEOUT_MS = 60000; // 60초 타임아웃
   let lastError;
   for (let i = 0; i <= maxRetries; i++) {
     try {
       const parts = imageParts.length > 0 ? [prompt, ...imageParts] : [prompt];
-      const result = await model.generateContent(parts);
+      const result = await Promise.race([
+        model.generateContent(parts),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini API 응답 시간 초과 (60초)')), TIMEOUT_MS))
+      ]);
       return result.response.text();
     } catch (err) {
       lastError = err;
@@ -760,7 +764,7 @@ app.post('/api/analyze', withTimeout(120000), async (req, res) => {
     if (fs.existsSync(imageDir)) {
       downloadedFiles = fs.readdirSync(imageDir)
         .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f))
-        .sort()
+        .sort(numericSort)
         .slice(0, 8);
     }
 
@@ -932,7 +936,7 @@ app.post('/api/generate', withTimeout(120000), async (req, res) => {
       if (fs.existsSync(screenshotDir)) {
         const files = fs.readdirSync(screenshotDir)
           .filter(f => f.startsWith('screenshot_'))
-          .sort()
+          .sort(numericSort)
           .slice(0, 6);
         imageParts = await Promise.all(files.map(async (file) => {
           const resized = await sharp(path.join(screenshotDir, file))
@@ -1292,13 +1296,13 @@ function cleanupOldSessions() {
   cleanupDir(DIRS.history, 30 * 24 * 60 * 60 * 1000, false);
 
   function cleanupDir(dir, maxAge, dirsOnly) {
-    fs.readdir(dir, (err, names) => {
-      if (err) return;
+    fs.readdir(dir, (readErr, names) => {
+      if (readErr) return;
       const cutoff = Date.now();
       names.forEach(name => {
         const fullPath = path.join(dir, name);
-        fs.stat(fullPath, (err, stat) => {
-          if (err) return;
+        fs.stat(fullPath, (statErr, stat) => {
+          if (statErr) return;
           if ((cutoff - stat.mtimeMs) > maxAge) {
             if (stat.isDirectory()) {
               fs.rm(fullPath, { recursive: true, force: true }, () => {});
@@ -1550,6 +1554,14 @@ const server = app.listen(PORT, () => {
 async function shutdown() {
   console.log('\n서버 종료 중...');
   server.close(() => { console.log('HTTP 서버 종료됨'); });
+  // 활성 크롤링이 끝날 때까지 최대 10초 대기
+  if (activeCrawls > 0) {
+    console.log(`활성 크롤링 ${activeCrawls}개 종료 대기...`);
+    const waitStart = Date.now();
+    while (activeCrawls > 0 && Date.now() - waitStart < 10000) {
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
   if (browser) await browser.close().catch(() => {});
   setTimeout(() => process.exit(0), 3000);
 }
