@@ -1284,7 +1284,7 @@
         const link = document.getElementById('jpgDownloadLink'); link.href = data.filePath; link.download = data.fileName;
         showToast('JPG 완료', 'success');
       } catch (err) { showToast(err.message, 'error'); }
-      finally { btn.disabled = false; btn.textContent = 'JPG 내보내기'; }
+      finally { btn.disabled = false; btn.textContent = 'JPG'; }
     }
 
     // ============================================================
@@ -1382,8 +1382,9 @@
       try {
         await fetch(`/api/history/${sid}`, { method: 'DELETE' });
         showToast('삭제됨', 'success');
-        toggleHistory(); // 목록 새로고침
-        setTimeout(() => toggleHistory(), 100);
+        // 캐시에서 제거 후 목록만 다시 렌더링
+        historyCache = historyCache.filter(h => h.sessionId !== sid);
+        renderHistoryList(document.querySelector('.history-search input')?.value || '');
       } catch { showToast('삭제 실패', 'error'); }
     }
     document.addEventListener('click', e => { if (!e.target.closest('.history-dropdown')) document.getElementById('historyList').classList.remove('show'); });

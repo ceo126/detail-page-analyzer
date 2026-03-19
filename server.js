@@ -709,12 +709,12 @@ app.get('/api/crawl-sse', async (req, res) => {
   const url = req.query.url;
   const err = validateUrl(url);
   if (err) {
-    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     res.write(`data: ${JSON.stringify({ type: 'error', message: err })}\n\n`);
     return res.end();
   }
 
-  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
 
   // 클라이언트 연결 끊김 감지 → AbortController로 크롤링 중단
   const abortController = new AbortController();
@@ -1081,6 +1081,7 @@ app.post('/api/export-pdf', withTimeout(180000), async (req, res) => {
   const { html, outputId } = req.body;
   if (!html) return res.status(400).json({ error: 'HTML 필요' });
   if (html.length > 2 * 1024 * 1024) return res.status(400).json({ error: 'HTML이 너무 큽니다 (최대 2MB)' });
+  if (outputId && !/^[\w\-]+$/.test(outputId)) return res.status(400).json({ error: '유효하지 않은 outputId' });
 
   let context = null;
   try {
@@ -1281,8 +1282,6 @@ app.get('/api/health', (req, res) => {
 // 8) 오래된 세션 자동 정리
 // ============================================================
 function cleanupOldSessions() {
-  const now = Date.now();
-
   // screenshots/ — 24시간
   cleanupDir(DIRS.screenshots, 24 * 60 * 60 * 1000, true);
   // output/ — 7일
@@ -1295,11 +1294,12 @@ function cleanupOldSessions() {
   function cleanupDir(dir, maxAge, dirsOnly) {
     fs.readdir(dir, (err, names) => {
       if (err) return;
+      const cutoff = Date.now();
       names.forEach(name => {
         const fullPath = path.join(dir, name);
         fs.stat(fullPath, (err, stat) => {
           if (err) return;
-          if ((now - stat.mtimeMs) > maxAge) {
+          if ((cutoff - stat.mtimeMs) > maxAge) {
             if (stat.isDirectory()) {
               fs.rm(fullPath, { recursive: true, force: true }, () => {});
             } else if (!dirsOnly) {
