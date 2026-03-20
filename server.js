@@ -1781,6 +1781,51 @@ app.post('/api/cleanup', (req, res) => {
 
 
 // ============================================================
+// 출력물 목록 조회 (생성된 HTML/JPG/PDF)
+// ============================================================
+app.get('/api/outputs', (req, res) => {
+  try {
+    const files = fs.readdirSync(DIRS.output)
+      .filter(f => /\.(html|jpg|pdf)$/i.test(f))
+      .map(f => {
+        const stat = fs.statSync(path.join(DIRS.output, f));
+        return {
+          filename: f,
+          url: `/output/${f}`,
+          size: stat.size,
+          type: path.extname(f).slice(1),
+          createdAt: stat.mtime.toISOString()
+        };
+      })
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 50);
+    res.json({ success: true, outputs: files });
+  } catch (err) {
+    res.json({ success: true, outputs: [] });
+  }
+});
+
+// ============================================================
+// 전체 히스토리 삭제
+// ============================================================
+app.delete('/api/history', (req, res) => {
+  try {
+    const histFiles = fs.readdirSync(DIRS.history).filter(f => f.endsWith('.json'));
+    histFiles.forEach(f => {
+      try { fs.unlinkSync(path.join(DIRS.history, f)); } catch {}
+    });
+    // 스크린샷 폴더도 정리
+    const ssDirs = fs.readdirSync(DIRS.screenshots);
+    ssDirs.forEach(d => {
+      try { fs.rmSync(path.join(DIRS.screenshots, d), { recursive: true, force: true }); } catch {}
+    });
+    res.json({ success: true, deleted: histFiles.length });
+  } catch (err) {
+    res.status(500).json({ error: '전체 삭제 실패' });
+  }
+});
+
+// ============================================================
 // 헬스체크
 // ============================================================
 app.get('/api/health', (req, res) => {

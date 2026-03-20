@@ -715,12 +715,12 @@
   <div class="toast" id="toast"></div>
 
   <!-- 온보딩 -->
-  <div id="onboarding" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:300; display:flex; align-items:center; justify-content:center;">
+  <div id="onboarding" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:300; align-items:center; justify-content:center;">
     <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:16px; padding:32px; max-width:500px; width:90%;">
       <h2 style="font-size:20px; font-weight:700; margin-bottom:16px; color:#3b82f6;">상세페이지 분석기 사용법</h2>
       <div style="font-size:14px; color:var(--text-secondary); line-height:1.8;">
         <p style="margin-bottom:12px;"><b style="color:var(--text-primary);">1단계</b> — URL 입력 후 "이미지 가져오기" 클릭</p>
-        <p style="margin-bottom:12px;"><b style="color:var(--text-primary);">2단계</b> — 캐처된 이미지 확인 후 "AI 분석" 클릭</p>
+        <p style="margin-bottom:12px;"><b style="color:var(--text-primary);">2단계</b> — 캡처된 이미지 확인 후 "AI 분석" 클릭</p>
         <p style="margin-bottom:12px;"><b style="color:var(--text-primary);">3단계</b> — 분석 결과를 확인하고 "생성" 탭에서 새 상세페이지 생성</p>
         <p style="margin-bottom:12px;"><b style="color:var(--text-primary);">4단계</b> — 미리보기에서 JPG/PDF/HTML로 내보내기</p>
       </div>
@@ -1640,7 +1640,7 @@
       // 생성 탭: 분석 미완료 시 안내
       const notice = document.getElementById('genNotice');
       if (notice) notice.style.display = (name === 'generate' && !currentAnalysis) ? 'block' : 'none';
-      // 탭 뽃지 업데이트
+      // 탭 뱃지 업데이트
       updateTabBadges();
     }
     function updateTabBadges() {
