@@ -646,6 +646,7 @@
             <button class="btn btn-gray btn-sm" id="btnEditHtml" onclick="editHtml()" title="HTML 소스 편집">HTML 편집</button>
             <button class="btn btn-gray btn-sm" id="btnCopyHtml" onclick="copyHtmlToClipboard()" title="HTML 코드 복사">복사</button>
             <button class="btn btn-gray btn-sm" id="btnCleanHtml" onclick="exportCleanHtml()" title="Cafe24/스마트스토어용">쇼핑몰용</button>
+            <button class="btn btn-gray btn-sm" onclick="extractText()" title="텍스트만 추출하여 복사">텍스트</button>
             <span style="width:1px; height:20px; background:var(--border); margin:0 4px;"></span>
             <button class="btn btn-gray btn-sm" id="btnCompare" onclick="toggleCompare()" style="display:none;">원본 비교</button>
             <button class="btn btn-gray btn-sm" id="btnAbCompare" onclick="openAbCompare()" style="display:none;">A/B 비교</button>
@@ -2050,6 +2051,18 @@
       document.getElementById('keywordInput').value = '';
       document.getElementById('editInstructions').value = '';
       showToast('초기화됨', 'success');
+    }
+
+    // 텍스트 추출
+    async function extractText() {
+      if (!currentHtml) return showToast('먼저 생성하세요', 'error');
+      try {
+        const res = await fetch('/api/extract-text', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({html:currentHtml}) });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        await navigator.clipboard.writeText(data.text);
+        showToast(`텍스트 복사됨 (${data.charCount}자)`, 'success');
+      } catch (err) { showToast(err.message || '추출 실패', 'error'); }
     }
 
     // 온보딩
