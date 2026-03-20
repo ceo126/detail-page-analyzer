@@ -463,6 +463,25 @@
     .history-search { padding:8px; border-bottom:1px solid #1f2233; }
     .history-search input { width:100%; background:#252830; border:1px solid #2d3140; border-radius:6px; color:#fff; padding:6px 10px; font-size:12px; outline:none; }
     .history-search input::placeholder { color:#555; }
+    /* 반응형 */
+    @media (max-width: 1024px) {
+      .main-layout { flex-direction: column; }
+      .left-panel { width: 100% !important; min-width: unset; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
+      .right-panel { min-width: unset; }
+      .resizer { display: none; }
+      .header { flex-wrap: wrap; height: auto; padding: 8px 12px; }
+      .url-bar { max-width: 100%; margin: 4px 0; order: 10; flex-basis: 100%; }
+      .header-right { order: 5; }
+      .preview-wrap iframe { width: 100% !important; }
+    }
+    @media (max-width: 600px) {
+      .header h1 { font-size: 15px; }
+      .badge { display: none; }
+      .tab { padding: 8px 12px; font-size: 12px; }
+      .card { padding: 12px; }
+      #tab-preview > div:first-child { flex-wrap: wrap; }
+      #tab-preview > div:first-child .btn { font-size: 11px; padding: 4px 8px; }
+    }
   </style>
 </head>
 <body>
@@ -979,6 +998,8 @@
         <button class="btn btn-gray btn-sm" onclick="startAnalyze()" style="font-size:11px;">재분석</button>
         <button class="btn btn-gray btn-sm" onclick="startCrawl()" style="font-size:11px;">재수집</button>
         <button class="btn btn-gray btn-sm" onclick="copyAnalysis()" style="font-size:11px;">분석 복사</button>
+        <button class="btn btn-gray btn-sm" onclick="toggleAllCards(true)" style="font-size:11px;">모두 펼치기</button>
+        <button class="btn btn-gray btn-sm" onclick="toggleAllCards(false)" style="font-size:11px;">모두 접기</button>
         <span style="margin-left:auto; font-size:11px; color:#555;">${new Date().toLocaleTimeString('ko-KR')}</span>
       </div>`;
 
