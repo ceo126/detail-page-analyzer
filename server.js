@@ -653,6 +653,8 @@ async function crawlPage(url, onProgress, abortSignal) {
     });
     await parallelLimit(downloadTasks, 3); // 동시 3개로 메모리 부담 감소
 
+    const totalDownloadMB = (totalDownloadBytes / 1024 / 1024).toFixed(1);
+    console.log(`이미지 다운로드 완료: ${downloadedImages.length}개, ${totalDownloadMB}MB`);
     notify('complete', '크롤링 완료', 100);
     console.log(`크롤링 완료: 스크린샷 ${numChunks}장, 이미지 ${downloadedImages.length}개 다운로드, 전체 높이 ${totalHeight}px`);
 
@@ -1684,6 +1686,18 @@ ${pageData.productName ? `추가 정보:
   }
 });
 
+// ============================================================
+// 수동 정리 API
+// ============================================================
+app.post('/api/cleanup', (req, res) => {
+  try {
+    cleanupOldSessions();
+    res.json({ success: true, message: '정리 작업이 시작되었습니다.' });
+  } catch (err) {
+    res.status(500).json({ error: '정리 실패' });
+  }
+});
+
 
 // ============================================================
 // 헬스체크
@@ -1695,7 +1709,8 @@ app.get('/api/health', (req, res) => {
     browserConnected: !!(browser && browser.isConnected()),
     activeCrawls,
     geminiConfigured: !!process.env.GEMINI_API_KEY,
-    memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB'
+    memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+    nodeVersion: process.version
   });
 });
 
