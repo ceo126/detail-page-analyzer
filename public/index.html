@@ -575,6 +575,11 @@
           </div>
           <div class="label">추가 요청사항 (선택)</div>
           <textarea class="gen-textarea" id="editInstructions" placeholder="예: 가격을 39,000원으로 / 후기 섹션 추가 / 톤을 더 고급스럽게"></textarea>
+          <div style="display:flex; gap:6px; margin-bottom:12px;">
+            <button class="btn btn-gray btn-sm" onclick="saveTemplate()" style="font-size:11px;">템플릿 저장</button>
+            <button class="btn btn-gray btn-sm" onclick="loadTemplate()" style="font-size:11px;">템플릿 불러오기</button>
+            <button class="btn btn-gray btn-sm" onclick="clearTemplate()" style="font-size:11px;">초기화</button>
+          </div>
           <div id="genHistoryArea" style="display:none;">
             <div class="label" style="margin-top:8px;">생성 이력</div>
             <div id="genHistoryList"></div>
@@ -603,6 +608,7 @@
             <button class="btn btn-green btn-sm" id="btnExportJpg" onclick="exportJpg(this)">JPG</button>
             <button class="btn btn-green btn-sm" id="btnExportAll" onclick="exportAll()" title="JPG + PDF 동시 생성">전체</button>
           </div>
+          <div id="previewInfo" style="text-align:right; font-size:11px; color:var(--text-muted); margin-bottom:4px;"></div>
           <div class="preview-wrap" id="previewWrap">
             <iframe id="previewFrame" style="display:none;"></iframe>
             <div id="previewEmpty" class="empty-state" style="min-height:400px; background:#1a1d27;">
@@ -991,6 +997,12 @@
         <span style="margin-left:auto; font-size:11px; color:#555;">${new Date().toLocaleTimeString('ko-KR')}</span>
       </div>`;
 
+      h += `<div style="margin-bottom:12px;">
+        <input type="text" id="analysisSearch" placeholder="분석 결과 내 검색..."
+          oninput="filterAnalysisCards(this.value)"
+          style="width:100%; background:var(--bg-tertiary); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); padding:8px 12px; font-size:12px; outline:none;">
+      </div>`;
+
       // 요약 카드
       const score = a.overall?.score || 0;
       const sc = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
@@ -1185,6 +1197,12 @@
       const emptyEl = document.getElementById('previewEmpty');
       if (emptyEl) emptyEl.style.display = 'none';
       iframe.style.display = 'block';
+      // 프리뷰 정보 업데이트
+      const infoEl = document.getElementById('previewInfo');
+      if (infoEl) {
+        const size = (new Blob([html]).size / 1024).toFixed(1);
+        infoEl.textContent = `HTML ${size}KB`;
+      }
       const doc = iframe.contentDocument || iframe.contentWindow.document;
       doc.open(); doc.write(html); doc.close();
       setTimeout(() => {
@@ -1876,6 +1894,44 @@
         if (expand) card.classList.remove('collapsed');
         else card.classList.add('collapsed');
       });
+    }
+    function filterAnalysisCards(query) {
+      const cards = document.querySelectorAll('#analysisContent .card');
+      const q = query.toLowerCase();
+      cards.forEach(card => {
+        if (!q) { card.style.display = ''; return; }
+        const text = card.innerText.toLowerCase();
+        card.style.display = text.includes(q) ? '' : 'none';
+      });
+    }
+    function saveTemplate() {
+      const keyword = document.getElementById('keywordInput').value;
+      const edits = document.getElementById('editInstructions').value;
+      const useImg = document.getElementById('useOriginalImages').checked;
+      const templates = JSON.parse(localStorage.getItem('genTemplates') || '[]');
+      const name = prompt('템플릿 이름을 입력하세요');
+      if (!name) return;
+      templates.unshift({ name, keyword, edits, useImg, savedAt: new Date().toISOString() });
+      if (templates.length > 10) templates.length = 10;
+      localStorage.setItem('genTemplates', JSON.stringify(templates));
+      showToast(`템플릿 "${name}" 저장됨`, 'success');
+    }
+    function loadTemplate() {
+      const templates = JSON.parse(localStorage.getItem('genTemplates') || '[]');
+      if (!templates.length) return showToast('저장된 템플릿이 없습니다', 'error');
+      const names = templates.map((t, i) => `${i + 1}. ${t.name}`).join('\n');
+      const idx = parseInt(prompt('불러올 템플릿 번호:\n' + names)) - 1;
+      if (isNaN(idx) || !templates[idx]) return;
+      const t = templates[idx];
+      document.getElementById('keywordInput').value = t.keyword || '';
+      document.getElementById('editInstructions').value = t.edits || '';
+      document.getElementById('useOriginalImages').checked = t.useImg !== false;
+      showToast(`"${t.name}" 불러옴`, 'success');
+    }
+    function clearTemplate() {
+      document.getElementById('keywordInput').value = '';
+      document.getElementById('editInstructions').value = '';
+      showToast('초기화됨', 'success');
     }
   </script>
 </body>
