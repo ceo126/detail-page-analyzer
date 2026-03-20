@@ -6,17 +6,35 @@
   <title>상세페이지 분석기</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg-primary: #0f1117;
+      --bg-secondary: #1a1d27;
+      --bg-tertiary: #252830;
+      --border: #2d3140;
+      --text-primary: #e1e4e8;
+      --text-secondary: #888;
+      --text-muted: #555;
+    }
+    body.light-theme {
+      --bg-primary: #f5f5f7;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #e8e8ed;
+      --border: #d1d1d6;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-muted: #999;
+    }
     body {
       font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #0f1117;
-      color: #e1e4e8;
+      background: var(--bg-primary);
+      color: var(--text-primary);
       height: 100vh;
       overflow: hidden;
     }
 
     .header {
-      background: linear-gradient(135deg, #1a1d27 0%, #252830 100%);
-      border-bottom: 1px solid #2d3140;
+      background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+      border-bottom: 1px solid var(--border);
       padding: 12px 24px;
       display: flex;
       align-items: center;
@@ -31,8 +49,8 @@
     .url-bar {
       display: flex;
       gap: 8px;
-      background: #0f1117;
-      border: 1px solid #2d3140;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
       border-radius: 8px;
       padding: 4px;
       flex: 1;
@@ -88,7 +106,7 @@
       border-right: 1px solid #2d3140;
       display: flex;
       flex-direction: column;
-      background: #13151b;
+      background: var(--bg-secondary);
     }
     .panel-header {
       padding: 10px 16px;
@@ -153,7 +171,7 @@
     /* 탭 */
     .tabs {
       display: flex;
-      border-bottom: 1px solid #2d3140;
+      border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
     .tab {
@@ -174,8 +192,8 @@
 
     /* 분석 결과 카드 */
     .card {
-      background: #1a1d27;
-      border: 1px solid #2d3140;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
       border-radius: 10px;
       padding: 16px;
       margin-bottom: 12px;
@@ -191,7 +209,9 @@
       cursor: pointer;
       user-select: none;
     }
-    .card-title .toggle-arrow { margin-left: auto; font-size: 10px; color: #555; transition: transform 0.2s; }
+    .card-copy-btn { margin-left:auto; font-size:12px; cursor:pointer; opacity:0.4; transition:opacity 0.15s; padding:2px 4px; }
+    .card-copy-btn:hover { opacity:1; }
+    .card-title .toggle-arrow { margin-left: 4px; font-size: 10px; color: #555; transition: transform 0.2s; }
     .card.collapsed .card-body { display: none; }
     .card.collapsed .toggle-arrow { transform: rotate(-90deg); }
     .card-icon {
@@ -457,6 +477,7 @@
       <button class="btn-analyze" id="btnAnalyze" onclick="startAnalyze()" style="display:none; background:#8b5cf6;">AI 분석</button>
     </div>
     <div class="header-right">
+      <button id="themeToggle" onclick="toggleTheme()" style="background:none; border:1px solid #2d3140; color:#555; padding:3px 8px; border-radius:4px; cursor:pointer; font-size:12px;" title="테마 변경">&#9728;&#65039;</button>
       <button class="btn-gray btn-sm" onclick="document.getElementById('shortcutModal').style.display='block'" style="background:none; border:1px solid #2d3140; color:#555; padding:3px 8px; border-radius:4px; cursor:pointer; font-size:12px;" title="키보드 단축키">?</button>
       <div class="history-dropdown">
         <button class="btn-gray btn-sm" onclick="toggleHistory()">히스토리</button>
@@ -478,6 +499,10 @@
         <span>원본 페이지</span>
         <span class="platform-badge" id="platformBadge" style="display:none"></span>
         <button id="btnRecrawl" style="display:none; background:#252830; border:1px solid #2d3140; color:#888; padding:3px 10px; border-radius:4px; font-size:11px; cursor:pointer;" onclick="startCrawl()">재수집</button>
+        <div id="viewToggle" style="display:none; margin-left:4px;">
+          <button onclick="setScreenshotView('list')" style="background:none; border:1px solid #2d3140; color:#888; padding:2px 6px; border-radius:3px 0 0 3px; font-size:11px; cursor:pointer;" title="리스트">&#9776;</button>
+          <button onclick="setScreenshotView('grid')" style="background:none; border:1px solid #2d3140; color:#888; padding:2px 6px; border-radius:0 3px 3px 0; font-size:11px; cursor:pointer; border-left:0;" title="그리드">&#8862;</button>
+        </div>
         <span id="progressText" style="margin-left:auto; font-size:12px; color:#555;"></span>
       </div>
       <div class="screenshot-scroll" id="screenshotArea">
@@ -548,8 +573,16 @@
             <button class="btn btn-gray btn-sm" id="btnCompare" onclick="toggleCompare()" style="display:none;">원본 비교</button>
             <button class="btn btn-gray btn-sm" id="btnAbCompare" onclick="openAbCompare()" style="display:none;">A/B 비교</button>
             <button class="btn btn-gray btn-sm" id="btnFullPreview" onclick="openFullPreview()" title="새 창에서 열기">전체화면</button>
+            <select id="previewZoom" onchange="setPreviewZoom(this.value)" style="background:#252830; border:1px solid #2d3140; color:#e1e4e8; padding:4px 8px; border-radius:4px; font-size:12px;">
+              <option value="50">50%</option>
+              <option value="75">75%</option>
+              <option value="100" selected>100%</option>
+              <option value="125">125%</option>
+              <option value="150">150%</option>
+            </select>
             <button class="btn btn-green btn-sm" id="btnExportPdf" onclick="exportPdf(this)" style="margin-left:auto;">PDF</button>
             <button class="btn btn-green btn-sm" id="btnExportJpg" onclick="exportJpg(this)">JPG</button>
+            <button class="btn btn-green btn-sm" id="btnExportAll" onclick="exportAll()" title="JPG + PDF 동시 생성">전체</button>
           </div>
           <div class="preview-wrap" id="previewWrap">
             <iframe id="previewFrame" style="display:none;"></iframe>
@@ -605,15 +638,20 @@
         <div class="row"><span class="row-label">Alt + 1</span><span class="row-value">분석 결과 탭</span></div>
         <div class="row"><span class="row-label">Alt + 2</span><span class="row-value">생성 탭</span></div>
         <div class="row"><span class="row-label">Alt + 3</span><span class="row-value">미리보기 탭</span></div>
+        <div class="row"><span class="row-label">Ctrl + E</span><span class="row-value">일괄 내보내기 (JPG+PDF)</span></div>
+        <div class="row"><span class="row-label">Ctrl + D</span><span class="row-value">HTML 다운로드</span></div>
         <div class="row"><span class="row-label">Escape</span><span class="row-value">모달 닫기</span></div>
         <div class="row"><span class="row-label">?</span><span class="row-value">이 도움말</span></div>
       </div>
     </div>
   </div>
 
-  <!-- 라이트박스 -->
-  <div class="lightbox" id="lightbox" onclick="this.classList.remove('show')">
+  <!-- 라이트박스 (이전/다음 네비게이션) -->
+  <div class="lightbox" id="lightbox" onclick="if(event.target===this)this.classList.remove('show')">
+    <button onclick="event.stopPropagation();navigateLightbox(-1)" style="position:absolute;left:20px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.6);border:none;color:#fff;font-size:32px;padding:10px 16px;border-radius:8px;cursor:pointer;">&#8249;</button>
     <img id="lightboxImg" src="">
+    <button onclick="event.stopPropagation();navigateLightbox(1)" style="position:absolute;right:20px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.6);border:none;color:#fff;font-size:32px;padding:10px 16px;border-radius:8px;cursor:pointer;">&#8250;</button>
+    <span id="lightboxCounter" style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%);color:#888;font-size:13px;"></span>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -626,6 +664,28 @@
 
     // 플랫폼 이름 맵 (공용)
     const PLATFORM_NAMES = { coupang:'쿠팡', naver:'네이버', wadiz:'와디즈', musinsa:'무신사', ohouse:'오늘의집', '11st':'11번가', gmarket:'G마켓', auction:'옥션', tmon:'티몬', wemakeprice:'위메프', aliexpress:'알리', idus:'아이디어스', other:'기타' };
+
+    // 브라우저 알림
+    function notifyIfHidden(title, body) {
+      if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, { body });
+      }
+    }
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    // 드래그 앤 드롭 URL
+    document.body.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    document.body.addEventListener('drop', e => {
+      e.preventDefault();
+      const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list') || '';
+      if (text && text.startsWith('http')) {
+        document.getElementById('urlInput').value = text.trim();
+        document.getElementById('urlInput').dispatchEvent(new Event('input'));
+        showToast('URL 입력됨 — Enter로 시작', 'success');
+      }
+    });
 
     // ============================================================
     // 패널 리사이저
@@ -768,12 +828,16 @@
       setProgress(true, 100, `이미지 ${crawl.screenshotCount}장 캡처 완료`);
       setTimeout(() => setProgress(false), 1500);
       const toastType = warning ? 'error' : 'success';
-      showToast(`${crawl.screenshotCount}장 캡처${warning || ' — "AI 분석" 버튼을 눌러주세요'}`, toastType);
+      const durationText = crawl.crawlDuration ? ` (${crawl.crawlDuration}초)` : '';
+      showToast(`${crawl.screenshotCount}장 캡처${durationText}${warning || ' — "AI 분석" 버튼을 눌러주세요'}`, toastType);
+      notifyIfHidden('크롤링 완료', '스크린샷 ' + crawl.screenshotCount + '장 캡처');
       btnAnalyze.style.display = 'inline-flex';
       btnCrawl.disabled = false;
       btnCrawl.textContent = '이미지 가져오기';
       document.getElementById('btnRecrawl').style.display = 'inline-block';
+      document.getElementById('viewToggle').style.display = 'inline-flex';
       document.getElementById('btnCompare').style.display = 'inline-block';
+      document.getElementById('viewToggle').style.display = 'inline-flex';
       switchTab('analysis');
       saveSession();
     }
@@ -821,6 +885,8 @@
         setTimeout(() => setProgress(false), 800);
         const analyzeSec = ((Date.now() - analyzeStart) / 1000).toFixed(1);
         showToast(`AI 분석 완료 (${analyzeSec}초)`, 'success');
+        notifyIfHidden('AI 분석 완료', analyze.analysis?.product?.name || '분석 결과');
+        notifyIfHidden('AI 분석 완료', analyze.analysis?.product?.name || '분석 결과 확인');
         saveSession();
 
         // 키워드 자동 채움 (분석된 제품명)
@@ -944,7 +1010,7 @@
       // 제품 정보
       if (a.product) {
         const p = a.product;
-        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#1e3a5f;color:#3b82f6;">P</span>제품 정보<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
+        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#1e3a5f;color:#3b82f6;">P</span>제품 정보<span class="card-copy-btn" onclick="event.stopPropagation(); copyCardContent(this)" title="이 섹션 복사">&#128203;</span><span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           ${row('제품명', p.name)}${row('가격', p.price)}${row('원가', p.originalPrice)}${row('할인율', p.discountRate)}
           ${row('카테고리', p.category)}${row('브랜드', p.brand)}${row('옵션', p.options)}
         </div></div>`;
@@ -953,7 +1019,7 @@
       // 디자인
       if (a.design) {
         const d = a.design;
-        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#2d1f4e;color:#8b5cf6;">D</span>디자인 분석<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
+        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#2d1f4e;color:#8b5cf6;">D</span>디자인 분석<span class="card-copy-btn" onclick="event.stopPropagation(); copyCardContent(this)" title="이 섹션 복사">&#128203;</span><span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           ${row('톤', d.tone)}${row('폰트', d.fontStyle)}${row('이미지 스타일', d.imageStyle)}${row('완성도', d.overallQuality)}
           <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">컬러</span>
             <div class="colors">${(d.mainColors||[]).map(c=>`<div class="color-dot" style="background:${esc(c)}" title="${esc(c)}"></div>`).join('')}</div>
@@ -963,7 +1029,7 @@
 
       // 페이지 구조
       if (a.structure && a.structure.length) {
-        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#1a3d2e;color:#10b981;">S</span>페이지 구조 (${a.structure.length}개 섹션)<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
+        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#1a3d2e;color:#10b981;">S</span>페이지 구조 (${a.structure.length}개 섹션)<span class="card-copy-btn" onclick="event.stopPropagation(); copyCardContent(this)" title="이 섹션 복사">&#128203;</span><span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           <div class="section-list">${a.structure.map((s,i) => `
             <div class="section-item">
               <div class="sec-name">${i+1}. ${esc(s.section)}</div>
@@ -977,7 +1043,7 @@
       // 카피라이팅
       if (a.copywriting) {
         const c = a.copywriting;
-        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#3d2e1a;color:#f59e0b;">C</span>카피라이팅<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
+        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#3d2e1a;color:#f59e0b;">C</span>카피라이팅<span class="card-copy-btn" onclick="event.stopPropagation(); copyCardContent(this)" title="이 섹션 복사">&#128203;</span><span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           ${row('헤드라인 스타일', c.headlineStyle)}${row('어조', c.toneOfVoice)}${row('CTA', c.callToAction)}
           ${c.headlines && c.headlines.length ? `<div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">실제 헤드라인</span><div class="tags">${c.headlines.map(t=>`<span class="tag yellow">${esc(t)}</span>`).join('')}</div></div>` : ''}
           <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">핵심 문구</span><div class="tags">${(c.keyPhrases||[]).map(t=>`<span class="tag blue">${esc(t)}</span>`).join('')}</div></div>
@@ -988,7 +1054,7 @@
       // 타겟
       if (a.target) {
         const t = a.target;
-        h += `<div class="card collapsed"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#1a2d3d;color:#06b6d4;">T</span>타겟 분석<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
+        h += `<div class="card collapsed"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#1a2d3d;color:#06b6d4;">T</span>타겟 분석<span class="card-copy-btn" onclick="event.stopPropagation(); copyCardContent(this)" title="이 섹션 복사">&#128203;</span><span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           ${row('타겟', t.audience)}${row('연령대', t.ageRange)}
           <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">고민</span><div class="tags">${(t.painPoints||[]).map(p=>`<span class="tag">${esc(p)}</span>`).join('')}</div></div>
           <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">혜택</span><div class="tags">${(t.benefits||[]).map(p=>`<span class="tag blue">${esc(p)}</span>`).join('')}</div></div>
@@ -999,7 +1065,7 @@
       // 소셜 프루프
       if (a.socialProof) {
         const sp = a.socialProof;
-        h += `<div class="card collapsed"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#2d2d1a;color:#eab308;">!</span>신뢰 요소<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
+        h += `<div class="card collapsed"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#2d2d1a;color:#eab308;">!</span>신뢰 요소<span class="card-copy-btn" onclick="event.stopPropagation(); copyCardContent(this)" title="이 섹션 복사">&#128203;</span><span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           ${row('리뷰/후기', sp.reviews)}${row('판매/펀딩', sp.salesCount)}${row('인증/수상', sp.certifications)}
           ${sp.trustElements ? `<div style="margin-top:8px;"><div class="tags">${(sp.trustElements||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div>` : ''}
         </div></div>`;
@@ -1008,7 +1074,7 @@
       // 종합 평가
       if (a.overall) {
         const o = a.overall;
-        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#1f1a3d;color:#a78bfa;">R</span>종합 평가<span class="toggle-arrow">&#9660;</span></div><div class="card-body">
+        h += `<div class="card"><div class="card-title" onclick="this.parentElement.classList.toggle('collapsed')"><span class="card-icon" style="background:#1f1a3d;color:#a78bfa;">R</span>종합 평가<span class="card-copy-btn" onclick="event.stopPropagation(); copyCardContent(this)" title="이 섹션 복사">&#128203;</span><span class="toggle-arrow">&#9660;</span></div><div class="card-body">
           <p style="font-size:13px; color:#aaa; line-height:1.6; margin-bottom:10px;">${esc(o.summary)}</p>
           <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">장점</span><div class="tags">${(o.strengths||[]).map(s=>`<span class="tag green">${esc(s)}</span>`).join('')}</div></div>
           <div style="margin-top:8px;"><span class="row-label" style="font-size:12px;">개선점</span><div class="tags">${(o.weaknesses||[]).map(s=>`<span class="tag">${esc(s)}</span>`).join('')}</div></div>
@@ -1063,6 +1129,7 @@
         setTimeout(() => setProgress(false), 800);
         const genSec = ((Date.now() - genStart) / 1000).toFixed(1);
         showToast(`생성 완료 (${genSec}초)` + (keyword ? ` — ${keyword}` : ''), 'success');
+        notifyIfHidden('생성 완료', keyword || '상세페이지 생성됨');
         // 생성 이력 추가
         generationHistory.unshift({
           outputId: data.outputId,
@@ -1392,9 +1459,22 @@
     // ============================================================
     // HTML 편집 / JSON / 유틸
     // ============================================================
+    let lightboxImages = [];
+    let lightboxIndex = 0;
     function openLightbox(src) {
+      // 모든 스크린샷 이미지 수집
+      lightboxImages = Array.from(document.querySelectorAll('#screenshotArea img[alt^="캡처"]')).map(img => img.src);
+      lightboxIndex = lightboxImages.indexOf(src);
+      if (lightboxIndex === -1) { lightboxImages = [src]; lightboxIndex = 0; }
       document.getElementById('lightboxImg').src = src;
+      document.getElementById('lightboxCounter').textContent = `${lightboxIndex + 1} / ${lightboxImages.length}`;
       document.getElementById('lightbox').classList.add('show');
+    }
+    function navigateLightbox(dir) {
+      if (!lightboxImages.length) return;
+      lightboxIndex = (lightboxIndex + dir + lightboxImages.length) % lightboxImages.length;
+      document.getElementById('lightboxImg').src = lightboxImages[lightboxIndex];
+      document.getElementById('lightboxCounter').textContent = `${lightboxIndex + 1} / ${lightboxImages.length}`;
     }
 
     function copyHtmlToClipboard() {
@@ -1563,6 +1643,8 @@
         else startCrawl();
       }
       if (e.ctrlKey && e.key === 'g') { e.preventDefault(); generatePage(); }
+      if (e.ctrlKey && e.key === 'e') { e.preventDefault(); exportAll(); }
+      if (e.ctrlKey && e.key === 'd') { e.preventDefault(); downloadHtml(); }
       if (e.altKey && e.key === '1') switchTab('analysis');
       if (e.altKey && e.key === '2') switchTab('generate');
       if (e.altKey && e.key === '3') switchTab('preview');
@@ -1642,11 +1724,194 @@
     setInterval(checkHealth, 30000);
     restoreSession();
 
+    // 상태 점 클릭 → 서버 통계 표시
+    document.getElementById('statusDot').style.cursor = 'pointer';
+    document.getElementById('statusDot').addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/stats');
+        const s = await res.json();
+        if (!s.success) throw new Error();
+        showToast(`분석 ${s.historyCount}건 | 디스크 ${s.totalDiskMB}MB | 메모리 ${s.memoryMB}MB | 업타임 ${Math.floor(s.uptime/60)}분`, 'success');
+      } catch { showToast('통계 조회 실패', 'error'); }
+    });
+
+    // 미리보기 줌
+    function setPreviewZoom(pct) {
+      const frame = document.getElementById('previewFrame');
+      if (!frame) return;
+      const scale = pct / 100;
+      frame.style.transform = `scale(${scale})`;
+      frame.style.transformOrigin = 'top center';
+      frame.style.width = (860 / scale) + 'px';
+    }
+
+    // 카드 섹션 복사
+    function copyCardContent(btn) {
+      const card = btn.closest('.card');
+      if (!card) return;
+      const body = card.querySelector('.card-body');
+      if (!body) return;
+      const text = body.innerText;
+      navigator.clipboard.writeText(text)
+        .then(() => { btn.innerHTML = '&#10003;'; setTimeout(() => btn.innerHTML = '&#128203;', 1500); showToast('섹션 복사됨', 'success'); })
+        .catch(() => showToast('복사 실패', 'error'));
+    }
+
+    // 전체 내보내기 (JPG + PDF)
+    async function exportAll() {
+      if (!currentHtml) return showToast('먼저 생성하세요', 'error');
+      const btn = document.getElementById('btnExportAll');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        const [jpgRes, pdfRes] = await Promise.all([
+          fetch('/api/export-jpg', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({html:currentHtml, outputId:currentOutputId}) }),
+          fetch('/api/export-pdf', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({html:currentHtml, outputId:currentOutputId}) })
+        ]);
+        const jpg = await jpgRes.json();
+        const pdf = await pdfRes.json();
+        if (jpg.success) {
+          document.getElementById('jpgResult').style.display = 'block';
+          document.getElementById('jpgPreview').src = jpg.filePath + '?t=' + Date.now();
+          document.getElementById('jpgInfo').textContent = jpg.dimensions + ' | ' + jpg.fileSize;
+          document.getElementById('jpgDownloadLink').href = jpg.filePath;
+          document.getElementById('jpgDownloadLink').download = jpg.fileName;
+        }
+        if (pdf.success) {
+          document.getElementById('pdfResult').style.display = 'block';
+          document.getElementById('pdfInfo').textContent = pdf.fileSize;
+          document.getElementById('pdfDownloadLink').href = pdf.filePath;
+          document.getElementById('pdfDownloadLink').download = pdf.fileName;
+        }
+        showToast('JPG + PDF 생성 완료', 'success');
+      } catch (err) { showToast(err.message || '내보내기 실패', 'error'); }
+      finally { btn.disabled = false; btn.textContent = '전체'; }
+    }
+
+    // 테마 토글
+    function toggleTheme() {
+      const isLight = document.body.classList.toggle('light-theme');
+      document.getElementById('themeToggle').innerHTML = isLight ? '&#127769;' : '&#9728;&#65039;';
+      localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    }
+    if (localStorage.getItem('theme') === 'light') {
+      document.body.classList.add('light-theme');
+      document.getElementById('themeToggle').innerHTML = '&#127769;';
+    }
+
+    // 스크린샷 그리드/리스트 뷰
+    function setScreenshotView(mode) {
+      const area = document.getElementById('screenshotArea');
+      const imgs = area.querySelectorAll('img[alt^="캐처"]');
+      if (mode === 'grid') {
+        imgs.forEach(img => { img.style.width = '48%'; img.style.display = 'inline-block'; img.style.verticalAlign = 'top'; img.style.marginBottom = '4px'; });
+      } else {
+        imgs.forEach(img => { img.style.width = '100%'; img.style.display = 'block'; img.style.verticalAlign = ''; img.style.marginBottom = '2px'; });
+      }
+    }
+
     // 페이지 이탈 시 SSE 연결 정리
     window.addEventListener('beforeunload', () => {
       if (currentEventSource) {
         currentEventSource.close();
         currentEventSource = null;
+      }
+    });
+
+    // ============================================================
+    // 미리보기 줌
+    // ============================================================
+    function setPreviewZoom(pct) {
+      const frame = document.getElementById('previewFrame');
+      if (!frame) return;
+      const scale = pct / 100;
+      frame.style.transform = `scale(${scale})`;
+      frame.style.transformOrigin = 'top center';
+      frame.style.width = (860 / scale) + 'px';
+    }
+
+    // ============================================================
+    // 분석 카드 섹션별 복사
+    // ============================================================
+    function copyCardContent(btn) {
+      const card = btn.closest('.card');
+      if (!card) return;
+      const body = card.querySelector('.card-body');
+      if (!body) return;
+      navigator.clipboard.writeText(body.innerText)
+        .then(() => { btn.textContent = '\u2713'; setTimeout(() => btn.textContent = '\uD83D\uDCCB', 1500); showToast('섹션 복사됨', 'success'); })
+        .catch(() => showToast('복사 실패', 'error'));
+    }
+
+    // ============================================================
+    // 일괄 내보내기 (JPG + PDF 동시)
+    // ============================================================
+    async function exportAll() {
+      if (!currentHtml) return showToast('먼저 생성하세요', 'error');
+      const btn = document.getElementById('btnExportAll');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        const [jpgRes, pdfRes] = await Promise.all([
+          fetch('/api/export-jpg', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({html:currentHtml, outputId:currentOutputId}) }),
+          fetch('/api/export-pdf', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({html:currentHtml, outputId:currentOutputId}) })
+        ]);
+        const jpg = await jpgRes.json();
+        const pdf = await pdfRes.json();
+        if (jpg.success) {
+          document.getElementById('jpgResult').style.display = 'block';
+          document.getElementById('jpgPreview').src = jpg.filePath + '?t=' + Date.now();
+          document.getElementById('jpgInfo').textContent = jpg.dimensions + ' | ' + jpg.fileSize;
+          document.getElementById('jpgDownloadLink').href = jpg.filePath;
+          document.getElementById('jpgDownloadLink').download = jpg.fileName;
+        }
+        if (pdf.success) {
+          document.getElementById('pdfResult').style.display = 'block';
+          document.getElementById('pdfInfo').textContent = pdf.fileSize;
+          document.getElementById('pdfDownloadLink').href = pdf.filePath;
+          document.getElementById('pdfDownloadLink').download = pdf.fileName;
+        }
+        showToast('JPG + PDF 생성 완료', 'success');
+        notifyIfHidden('내보내기 완료', 'JPG + PDF 생성됨');
+      } catch (err) { showToast(err.message || '내보내기 실패', 'error'); }
+      finally { btn.disabled = false; btn.textContent = '전체'; }
+    }
+
+    // ============================================================
+    // 다크/라이트 테마 토글
+    // ============================================================
+    function toggleTheme() {
+      const isLight = document.body.classList.toggle('light-theme');
+      document.getElementById('themeToggle').textContent = isLight ? '\uD83C\uDF19' : '\u2600\uFE0F';
+      localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    }
+    if (localStorage.getItem('theme') === 'light') {
+      document.body.classList.add('light-theme');
+      document.getElementById('themeToggle').textContent = '\uD83C\uDF19';
+    }
+
+    // ============================================================
+    // 스크린샷 그리드/리스트 뷰
+    // ============================================================
+    function setScreenshotView(mode) {
+      const area = document.getElementById('screenshotArea');
+      const imgs = area.querySelectorAll('img[alt^="캡처"]');
+      if (mode === 'grid') {
+        imgs.forEach(img => { img.style.width = '48%'; img.style.display = 'inline-block'; img.style.verticalAlign = 'top'; img.style.marginBottom = '4px'; });
+      } else {
+        imgs.forEach(img => { img.style.width = '100%'; img.style.display = 'block'; img.style.verticalAlign = ''; img.style.marginBottom = '2px'; });
+      }
+    }
+
+    // ============================================================
+    // 드래그 앤 드롭 URL
+    // ============================================================
+    document.body.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    document.body.addEventListener('drop', e => {
+      e.preventDefault();
+      const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list') || '';
+      if (text && text.startsWith('http')) {
+        document.getElementById('urlInput').value = text.trim();
+        document.getElementById('urlInput').dispatchEvent(new Event('input'));
+        showToast('URL 입력됨 — Enter로 시작', 'success');
       }
     });
   </script>
