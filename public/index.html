@@ -1234,8 +1234,11 @@
                 ph.textContent = '';
               }
               ph.style.outline = '';
-              // currentHtml 업데이트
+              // currentHtml 업데이트 + 서버 저장
               currentHtml = doc.documentElement.outerHTML;
+              if (currentOutputId) {
+                fetch('/api/save-html', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({html:currentHtml, outputId:currentOutputId}) }).catch(() => {});
+              }
               showToast('이미지 교체 완료', 'success');
             } catch (err) { showToast(err.message || '업로드 실패', 'error'); }
           };
@@ -1520,7 +1523,16 @@
 
     function editHtml() { if (!currentHtml) return; document.getElementById('htmlEditor').value = currentHtml; document.getElementById('htmlModal').style.display = 'block'; }
     function closeHtmlEditor() { document.getElementById('htmlModal').style.display = 'none'; }
-    function applyHtmlEdit() { currentHtml = document.getElementById('htmlEditor').value; updatePreview(currentHtml); closeHtmlEditor(); showToast('적용됨', 'success'); }
+    function applyHtmlEdit() {
+      currentHtml = document.getElementById('htmlEditor').value;
+      updatePreview(currentHtml);
+      closeHtmlEditor();
+      // 서버에도 저장
+      if (currentOutputId) {
+        fetch('/api/save-html', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({html:currentHtml, outputId:currentOutputId}) }).catch(() => {});
+      }
+      showToast('적용됨', 'success');
+    }
 
     async function exportAnalysisJson() {
       if (!currentAnalysis) return showToast('분석 데이터 없음', 'error');

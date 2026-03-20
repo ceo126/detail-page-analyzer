@@ -1687,6 +1687,51 @@ ${pageData.productName ? `추가 정보:
 });
 
 // ============================================================
+// HTML 수정 저장 API (프리뷰에서 편집 후 저장)
+// ============================================================
+app.post('/api/save-html', (req, res) => {
+  const { html, outputId } = req.body;
+  if (!html) return res.status(400).json({ error: 'HTML 필요' });
+  if (html.length > 2 * 1024 * 1024) return res.status(400).json({ error: 'HTML이 너무 큽니다 (최대 2MB)' });
+  if (outputId && !/^[\w\-]+$/.test(outputId)) return res.status(400).json({ error: '유효하지 않은 outputId' });
+
+  try {
+    const id = outputId || Date.now().toString();
+    const htmlPath = path.join(DIRS.output, `page_${id}.html`);
+    fs.writeFileSync(htmlPath, html);
+    res.json({ success: true, outputId: id, htmlPath: `/output/page_${id}.html` });
+  } catch (err) {
+    console.error('HTML 저장 오류:', err);
+    res.status(500).json({ error: 'HTML 저장 실패' });
+  }
+});
+
+// ============================================================
+// 다운로드된 이미지 목록 조회 API
+// ============================================================
+app.get('/api/images/:sessionId', (req, res) => {
+  if (!isValidSessionId(req.params.sessionId)) return res.status(400).json({ error: '유효하지 않은 sessionId' });
+  const imgDir = path.join(DIRS.screenshots, req.params.sessionId, 'images');
+  if (!fs.existsSync(imgDir)) return res.json({ success: true, images: [] });
+  try {
+    const images = fs.readdirSync(imgDir)
+      .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f))
+      .sort(numericSort)
+      .map(f => {
+        const stat = fs.statSync(path.join(imgDir, f));
+        return {
+          filename: f,
+          url: `/screenshots/${req.params.sessionId}/images/${f}`,
+          size: stat.size
+        };
+      });
+    res.json({ success: true, images, totalSize: images.reduce((s, i) => s + i.size, 0) });
+  } catch (err) {
+    res.status(500).json({ error: '이미지 목록 조회 실패' });
+  }
+});
+
+// ============================================================
 // 수동 정리 API
 // ============================================================
 app.post('/api/cleanup', (req, res) => {
