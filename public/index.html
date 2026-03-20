@@ -694,18 +694,6 @@
       Notification.requestPermission();
     }
 
-    // 드래그 앤 드롭 URL
-    document.body.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
-    document.body.addEventListener('drop', e => {
-      e.preventDefault();
-      const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list') || '';
-      if (text && text.startsWith('http')) {
-        document.getElementById('urlInput').value = text.trim();
-        document.getElementById('urlInput').dispatchEvent(new Event('input'));
-        showToast('URL 입력됨 — Enter로 시작', 'success');
-      }
-    });
-
     // ============================================================
     // 패널 리사이저
     // ============================================================
@@ -1762,80 +1750,6 @@
       } catch { showToast('통계 조회 실패', 'error'); }
     });
 
-    // 미리보기 줌
-    function setPreviewZoom(pct) {
-      const frame = document.getElementById('previewFrame');
-      if (!frame) return;
-      const scale = pct / 100;
-      frame.style.transform = `scale(${scale})`;
-      frame.style.transformOrigin = 'top center';
-      frame.style.width = (860 / scale) + 'px';
-    }
-
-    // 카드 섹션 복사
-    function copyCardContent(btn) {
-      const card = btn.closest('.card');
-      if (!card) return;
-      const body = card.querySelector('.card-body');
-      if (!body) return;
-      const text = body.innerText;
-      navigator.clipboard.writeText(text)
-        .then(() => { btn.innerHTML = '&#10003;'; setTimeout(() => btn.innerHTML = '&#128203;', 1500); showToast('섹션 복사됨', 'success'); })
-        .catch(() => showToast('복사 실패', 'error'));
-    }
-
-    // 전체 내보내기 (JPG + PDF)
-    async function exportAll() {
-      if (!currentHtml) return showToast('먼저 생성하세요', 'error');
-      const btn = document.getElementById('btnExportAll');
-      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
-      try {
-        const [jpgRes, pdfRes] = await Promise.all([
-          fetch('/api/export-jpg', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({html:currentHtml, outputId:currentOutputId}) }),
-          fetch('/api/export-pdf', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({html:currentHtml, outputId:currentOutputId}) })
-        ]);
-        const jpg = await jpgRes.json();
-        const pdf = await pdfRes.json();
-        if (jpg.success) {
-          document.getElementById('jpgResult').style.display = 'block';
-          document.getElementById('jpgPreview').src = jpg.filePath + '?t=' + Date.now();
-          document.getElementById('jpgInfo').textContent = jpg.dimensions + ' | ' + jpg.fileSize;
-          document.getElementById('jpgDownloadLink').href = jpg.filePath;
-          document.getElementById('jpgDownloadLink').download = jpg.fileName;
-        }
-        if (pdf.success) {
-          document.getElementById('pdfResult').style.display = 'block';
-          document.getElementById('pdfInfo').textContent = pdf.fileSize;
-          document.getElementById('pdfDownloadLink').href = pdf.filePath;
-          document.getElementById('pdfDownloadLink').download = pdf.fileName;
-        }
-        showToast('JPG + PDF 생성 완료', 'success');
-      } catch (err) { showToast(err.message || '내보내기 실패', 'error'); }
-      finally { btn.disabled = false; btn.textContent = '전체'; }
-    }
-
-    // 테마 토글
-    function toggleTheme() {
-      const isLight = document.body.classList.toggle('light-theme');
-      document.getElementById('themeToggle').innerHTML = isLight ? '&#127769;' : '&#9728;&#65039;';
-      localStorage.setItem('theme', isLight ? 'light' : 'dark');
-    }
-    if (localStorage.getItem('theme') === 'light') {
-      document.body.classList.add('light-theme');
-      document.getElementById('themeToggle').innerHTML = '&#127769;';
-    }
-
-    // 스크린샷 그리드/리스트 뷰
-    function setScreenshotView(mode) {
-      const area = document.getElementById('screenshotArea');
-      const imgs = area.querySelectorAll('img[alt^="캐처"]');
-      if (mode === 'grid') {
-        imgs.forEach(img => { img.style.width = '48%'; img.style.display = 'inline-block'; img.style.verticalAlign = 'top'; img.style.marginBottom = '4px'; });
-      } else {
-        imgs.forEach(img => { img.style.width = '100%'; img.style.display = 'block'; img.style.verticalAlign = ''; img.style.marginBottom = '2px'; });
-      }
-    }
-
     // 페이지 이탈 시 SSE 연결 정리
     window.addEventListener('beforeunload', () => {
       if (currentEventSource) {
@@ -1941,6 +1855,16 @@
         showToast('URL 입력됨 — Enter로 시작', 'success');
       }
     });
+
+    // ============================================================
+    // 분석 카드 전체 접기/펼치기
+    // ============================================================
+    function toggleAllCards(expand) {
+      document.querySelectorAll('#analysisContent .card').forEach(card => {
+        if (expand) card.classList.remove('collapsed');
+        else card.classList.add('collapsed');
+      });
+    }
   </script>
 </body>
 </html>
