@@ -496,6 +496,10 @@
     .tag { transition: background 0.15s; }
     .tag:hover { filter: brightness(1.2); }
 
+    /* 상태 점 펄스 */
+    @keyframes pulse { 0%, 100% { box-shadow: 0 0 4px rgba(16,185,129,0.4); } 50% { box-shadow: 0 0 8px rgba(16,185,129,0.6); } }
+    #statusDot { animation: pulse 2s ease-in-out infinite; }
+
     /* 반응형 */
     @media (max-width: 1024px) {
       .main-layout { flex-direction: column; }
@@ -522,7 +526,7 @@
   <div class="header">
     <h1>상세페이지 분석기</h1>
     <span class="badge">Gemini Vision</span>
-    <span id="statusDot" style="width:8px; height:8px; border-radius:50%; background:#10b981; display:inline-block;" title="서버 연결됨"></span>
+    <span id="statusDot" style="width:10px; height:10px; border-radius:50%; background:#10b981; display:inline-block; box-shadow:0 0 6px rgba(16,185,129,0.4);" title="서버 연결됨"></span>
     <div class="url-bar">
       <input type="text" id="urlInput" placeholder="분석할 상세페이지 URL (쿠팡, 네이버, 와디즈, 자사몰 등)">
       <button class="btn-analyze" id="btnCrawl" onclick="startCrawl()">이미지 가져오기</button>
@@ -558,9 +562,23 @@
         <span id="progressText" style="margin-left:auto; font-size:12px; color:#555;"></span>
       </div>
       <div class="screenshot-scroll" id="screenshotArea">
-        <div class="empty-state">
-          <div class="icon">&#128269;</div>
-          <div>URL을 입력하고 분석을 시작하세요</div>
+        <div class="empty-state" id="emptyGuide">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3;color:#3b82f6;">
+            <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/><path d="M9 12l2 2 4-4"/>
+          </svg>
+          <div style="font-size:16px; font-weight:600; color:var(--text-secondary);">URL을 입력하세요</div>
+          <div style="font-size:12px; color:var(--text-muted); line-height:1.6; text-align:center; max-width:280px;">
+            쿠팡, 네이버 스마트스토어, 와디즈 등<br>
+            상세페이지 URL을 붙여넣으면<br>
+            자동으로 분석이 시작됩니다
+          </div>
+          <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; justify-content:center;">
+            <span style="font-size:10px; padding:3px 8px; background:var(--bg-tertiary); border-radius:12px; color:var(--text-muted);">쿠팡</span>
+            <span style="font-size:10px; padding:3px 8px; background:var(--bg-tertiary); border-radius:12px; color:var(--text-muted);">네이버</span>
+            <span style="font-size:10px; padding:3px 8px; background:var(--bg-tertiary); border-radius:12px; color:var(--text-muted);">와디즈</span>
+            <span style="font-size:10px; padding:3px 8px; background:var(--bg-tertiary); border-radius:12px; color:var(--text-muted);">무신사</span>
+            <span style="font-size:10px; padding:3px 8px; background:var(--bg-tertiary); border-radius:12px; color:var(--text-muted);">자사몰</span>
+          </div>
         </div>
       </div>
     </div>
@@ -580,8 +598,10 @@
         <div class="tab-panel active" id="tab-analysis">
           <div id="analysisContent">
             <div class="empty-state" style="min-height:300px;">
-              <div class="icon">&#128202;</div>
-              <div>분석 결과가 여기에 표시됩니다</div>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.2;color:#8b5cf6;">
+                <path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              <div style="color:var(--text-muted);">왼쪽에서 URL을 크롤링한 후<br>"AI 분석" 버튼을 누르세요</div>
             </div>
           </div>
         </div>
@@ -589,7 +609,7 @@
         <div class="tab-panel" id="tab-generate">
           <div class="card" style="border-color:#3b82f6; margin-bottom:16px;">
             <div class="card-title"><span class="card-icon" style="background:#1e3a5f;color:#3b82f6;">K</span>키워드 기반 생성</div>
-            <p style="font-size:12px; color:#888; margin-bottom:10px; line-height:1.5;">원본 상세페이지의 디자인/구조를 그대로 유지하면서, 입력한 키워드(상품)에 맞게 내용을 새로 생성합니다.<br>비워두면 원본 상품 그대로 상세페이지를 생성합니다.</p>
+            <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px; line-height:1.5;">원본 디자인을 유지하면서 새 키워드로 상세페이지를 생성합니다. 비워두면 원본 그대로 생성합니다.</p>
             <div style="display:flex; gap:8px;">
               <input type="text" id="keywordInput" placeholder="예: 무선 핸디 청소기, 캠핑 접이식 의자, 유기농 단백질 쉐이크..."
                 style="flex:1; background:#252830; border:1px solid #2d3140; border-radius:8px; color:#fff; padding:10px 14px; font-size:14px; outline:none;"
@@ -620,33 +640,38 @@
         </div>
         <!-- 미리보기 탭 -->
         <div class="tab-panel" id="tab-preview">
-          <div style="display:flex; gap:8px; margin-bottom:12px;">
-            <button class="btn btn-gray btn-sm" id="btnRegenerate" onclick="switchTab('generate')">다시 생성</button>
-            <button class="btn btn-gray btn-sm" id="btnEditHtml" onclick="editHtml()">HTML 편집</button>
-            <button class="btn btn-gray btn-sm" id="btnExportJson" onclick="exportAnalysisJson()">JSON 저장</button>
-            <button class="btn btn-gray btn-sm" id="btnDownloadHtml" onclick="downloadHtml()">HTML 저장</button>
-            <button class="btn btn-gray btn-sm" id="btnCopyHtml" onclick="copyHtmlToClipboard()">HTML 복사</button>
-            <button class="btn btn-gray btn-sm" id="btnCleanHtml" onclick="exportCleanHtml()">쇼핑몰 HTML</button>
+          <div style="display:flex; gap:4px; margin-bottom:12px; align-items:center; flex-wrap:wrap; padding:8px; background:var(--bg-secondary); border-radius:8px; border:1px solid var(--border);">
+            <button class="btn btn-gray btn-sm" id="btnRegenerate" onclick="switchTab('generate')" title="다시 생성">다시 생성</button>
+            <span style="width:1px; height:20px; background:var(--border); margin:0 4px;"></span>
+            <button class="btn btn-gray btn-sm" id="btnEditHtml" onclick="editHtml()" title="HTML 소스 편집">HTML 편집</button>
+            <button class="btn btn-gray btn-sm" id="btnCopyHtml" onclick="copyHtmlToClipboard()" title="HTML 코드 복사">복사</button>
+            <button class="btn btn-gray btn-sm" id="btnCleanHtml" onclick="exportCleanHtml()" title="Cafe24/스마트스토어용">쇼핑몰용</button>
+            <span style="width:1px; height:20px; background:var(--border); margin:0 4px;"></span>
             <button class="btn btn-gray btn-sm" id="btnCompare" onclick="toggleCompare()" style="display:none;">원본 비교</button>
             <button class="btn btn-gray btn-sm" id="btnAbCompare" onclick="openAbCompare()" style="display:none;">A/B 비교</button>
-            <button class="btn btn-gray btn-sm" id="btnFullPreview" onclick="openFullPreview()" title="새 창에서 열기">전체화면</button>
-            <select id="previewZoom" onchange="setPreviewZoom(this.value)" style="background:#252830; border:1px solid #2d3140; color:#e1e4e8; padding:4px 8px; border-radius:4px; font-size:12px;">
+            <button class="btn btn-gray btn-sm" id="btnFullPreview" onclick="openFullPreview()" title="새 창에서 열기">새 창</button>
+            <select id="previewZoom" onchange="setPreviewZoom(this.value)" style="background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); padding:4px 8px; border-radius:4px; font-size:12px;" title="미리보기 줌">
               <option value="50">50%</option>
               <option value="75">75%</option>
               <option value="100" selected>100%</option>
               <option value="125">125%</option>
               <option value="150">150%</option>
             </select>
-            <button class="btn btn-green btn-sm" id="btnExportPdf" onclick="exportPdf(this)" style="margin-left:auto;">PDF</button>
-            <button class="btn btn-green btn-sm" id="btnExportJpg" onclick="exportJpg(this)">JPG</button>
-            <button class="btn btn-green btn-sm" id="btnExportAll" onclick="exportAll()" title="JPG + PDF 동시 생성">전체</button>
+            <span style="flex:1;"></span>
+            <button class="btn btn-gray btn-sm" id="btnExportJson" onclick="exportAnalysisJson()" title="분석 결과 JSON">JSON</button>
+            <button class="btn btn-gray btn-sm" id="btnDownloadHtml" onclick="downloadHtml()" title="HTML 파일 다운로드">HTML</button>
+            <button class="btn btn-green btn-sm" id="btnExportPdf" onclick="exportPdf(this)" title="PDF 파일 생성">PDF</button>
+            <button class="btn btn-green btn-sm" id="btnExportJpg" onclick="exportJpg(this)" title="JPG 이미지 생성">JPG</button>
+            <button class="btn btn-green btn-sm" id="btnExportAll" onclick="exportAll()" title="JPG + PDF 동시 생성" style="background:linear-gradient(135deg, #3b82f6, #8b5cf6); color:#fff;">전체</button>
           </div>
           <div id="previewInfo" style="text-align:right; font-size:11px; color:var(--text-muted); margin-bottom:4px;"></div>
           <div class="preview-wrap" id="previewWrap">
             <iframe id="previewFrame" style="display:none;"></iframe>
-            <div id="previewEmpty" class="empty-state" style="min-height:400px; background:#1a1d27;">
-              <div class="icon">&#128196;</div>
-              <div>"생성" 탭에서 상세페이지를 생성하면 여기에 표시됩니다</div>
+            <div id="previewEmpty" class="empty-state" style="min-height:400px; background:var(--bg-secondary);">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.2;color:#10b981;">
+                <path d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+              </svg>
+              <div style="color:var(--text-muted);">"생성" 탭에서 상세페이지를 만들어보세요</div>
             </div>
           </div>
           <div class="jpg-result" id="jpgResult" style="display:none;">
