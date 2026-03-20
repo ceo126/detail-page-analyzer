@@ -533,8 +533,8 @@
       <button class="btn-analyze" id="btnAnalyze" onclick="startAnalyze()" style="display:none; background:#8b5cf6;">AI 분석</button>
     </div>
     <div class="header-right">
-      <button id="themeToggle" onclick="toggleTheme()" style="background:none; border:1px solid #2d3140; color:#555; padding:3px 8px; border-radius:4px; cursor:pointer; font-size:12px;" title="테마 변경">&#9728;&#65039;</button>
-      <button class="btn-gray btn-sm" onclick="document.getElementById('shortcutModal').style.display='block'" style="background:none; border:1px solid #2d3140; color:#555; padding:3px 8px; border-radius:4px; cursor:pointer; font-size:12px;" title="키보드 단축키">?</button>
+      <button id="themeToggle" onclick="toggleTheme()" style="background:none; border:1px solid var(--border); color:var(--text-muted); padding:3px 8px; border-radius:4px; cursor:pointer; font-size:12px;" title="테마 변경">&#9728;&#65039;</button>
+      <button class="btn-gray btn-sm" onclick="document.getElementById('shortcutModal').style.display='block'" style="background:none; border:1px solid var(--border); color:var(--text-muted); padding:3px 8px; border-radius:4px; cursor:pointer; font-size:12px;" title="키보드 단축키">?</button>
       <div class="history-dropdown">
         <button class="btn-gray btn-sm" onclick="toggleHistory()">히스토리</button>
         <div class="history-list" id="historyList"></div>
@@ -554,10 +554,10 @@
       <div class="panel-header">
         <span>원본 페이지</span>
         <span class="platform-badge" id="platformBadge" style="display:none"></span>
-        <button id="btnRecrawl" style="display:none; background:#252830; border:1px solid #2d3140; color:#888; padding:3px 10px; border-radius:4px; font-size:11px; cursor:pointer;" onclick="startCrawl()">재수집</button>
+        <button id="btnRecrawl" style="display:none; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-secondary); padding:3px 10px; border-radius:4px; font-size:11px; cursor:pointer;" onclick="startCrawl()">재수집</button>
         <div id="viewToggle" style="display:none; margin-left:4px;">
-          <button onclick="setScreenshotView('list')" style="background:none; border:1px solid #2d3140; color:#888; padding:2px 6px; border-radius:3px 0 0 3px; font-size:11px; cursor:pointer;" title="리스트">&#9776;</button>
-          <button onclick="setScreenshotView('grid')" style="background:none; border:1px solid #2d3140; color:#888; padding:2px 6px; border-radius:0 3px 3px 0; font-size:11px; cursor:pointer; border-left:0;" title="그리드">&#8862;</button>
+          <button onclick="setScreenshotView('list')" style="background:none; border:1px solid var(--border); color:var(--text-secondary); padding:2px 6px; border-radius:3px 0 0 3px; font-size:11px; cursor:pointer;" title="리스트">&#9776;</button>
+          <button onclick="setScreenshotView('grid')" style="background:none; border:1px solid var(--border); color:var(--text-secondary); padding:2px 6px; border-radius:0 3px 3px 0; font-size:11px; cursor:pointer; border-left:0;" title="그리드">&#8862;</button>
         </div>
         <span id="progressText" style="margin-left:auto; font-size:12px; color:#555;"></span>
       </div>
@@ -593,6 +593,22 @@
         <button class="tab" data-tab="generate" onclick="switchTab('generate')">생성</button>
         <button class="tab" data-tab="preview" onclick="switchTab('preview')">미리보기</button>
       </div>
+      <div id="stepIndicator" style="display:flex; align-items:center; padding:8px 16px; gap:0; border-bottom:1px solid var(--border); background:var(--bg-primary);">
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
+          <span id="step1dot" style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#3b82f6;color:#fff;">1</span>
+          <span id="step1text" style="color:#3b82f6;font-weight:600;">크롤링</span>
+        </div>
+        <div id="step1line" style="flex:1;height:2px;background:var(--border);margin:0 8px;"></div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
+          <span id="step2dot" style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:var(--border);color:var(--text-muted);">2</span>
+          <span id="step2text" style="color:var(--text-muted);">AI 분석</span>
+        </div>
+        <div id="step2line" style="flex:1;height:2px;background:var(--border);margin:0 8px;"></div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
+          <span id="step3dot" style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:var(--border);color:var(--text-muted);">3</span>
+          <span id="step3text" style="color:var(--text-muted);">생성</span>
+        </div>
+      </div>
       <div class="tab-content">
         <!-- 분석 탭 -->
         <div class="tab-panel active" id="tab-analysis">
@@ -612,7 +628,7 @@
             <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px; line-height:1.5;">원본 디자인을 유지하면서 새 키워드로 상세페이지를 생성합니다. 비워두면 원본 그대로 생성합니다.</p>
             <div style="display:flex; gap:8px;">
               <input type="text" id="keywordInput" placeholder="예: 무선 핸디 청소기, 캠핑 접이식 의자, 유기농 단백질 쉐이크..."
-                style="flex:1; background:#252830; border:1px solid #2d3140; border-radius:8px; color:#fff; padding:10px 14px; font-size:14px; outline:none;"
+                style="flex:1; background:var(--bg-tertiary); border:1px solid var(--border); border-radius:8px; color:var(--text-primary); padding:10px 14px; font-size:14px; outline:none;"
                 onkeydown="if(event.key==='Enter') generatePage()">
               <button class="btn btn-purple" id="btnGenerate" onclick="generatePage()" style="white-space:nowrap;">생성</button>
             </div>
@@ -937,6 +953,7 @@
       switchTab('analysis');
       setTimeout(() => document.getElementById('btnAnalyze').focus(), 300);
       saveSession();
+      updateStepIndicator();
     }
 
     // ============================================================
@@ -984,6 +1001,7 @@
         showToast(`AI 분석 완료 (${analyzeSec}초)`, 'success');
         notifyIfHidden('AI 분석 완료', analyze.analysis?.product?.name || '분석 결과');
         saveSession();
+        updateStepIndicator();
 
         // 키워드 자동 채움 (분석된 제품명)
         const productName = analyze.analysis?.product?.name;
@@ -1247,6 +1265,7 @@
         // 최대 10개만 유지 (HTML 문자열 메모리 누적 방지)
         if (generationHistory.length > 10) generationHistory.length = 10;
         renderGenHistory();
+        updateStepIndicator();
       } catch (err) { showToast(err.message, 'error'); setProgress(false); }
       finally { btn.disabled = false; btn.textContent = '생성'; }
     }
@@ -1865,6 +1884,7 @@
           badge.style.display = 'inline-flex';
         }
         showToast('이전 세션 복원됨', 'success');
+        updateStepIndicator();
       } catch {}
     }
 
@@ -2051,6 +2071,32 @@
       document.getElementById('keywordInput').value = '';
       document.getElementById('editInstructions').value = '';
       showToast('초기화됨', 'success');
+    }
+
+    // ============================================================
+    // 스텝 인디케이터
+    // ============================================================
+    function updateStepIndicator() {
+      const done = '#10b981', active = '#3b82f6', pending = 'var(--border)', mutedColor = 'var(--text-muted)';
+      function setStep(n, state) {
+        const dot = document.getElementById('step'+n+'dot');
+        const text = document.getElementById('step'+n+'text');
+        if (state === 'done') {
+          dot.style.background = done; dot.style.color = '#fff'; dot.textContent = '\u2713';
+          text.style.color = done; text.style.fontWeight = '600';
+        } else if (state === 'active') {
+          dot.style.background = active; dot.style.color = '#fff'; dot.textContent = String(n);
+          text.style.color = active; text.style.fontWeight = '600';
+        } else {
+          dot.style.background = pending; dot.style.color = mutedColor; dot.textContent = String(n);
+          text.style.color = mutedColor; text.style.fontWeight = '';
+        }
+        const line = document.getElementById('step'+n+'line');
+        if (line) line.style.background = state === 'done' ? done : pending;
+      }
+      setStep(1, currentSessionId ? 'done' : 'active');
+      setStep(2, currentAnalysis ? 'done' : currentSessionId ? 'active' : 'pending');
+      setStep(3, currentHtml ? 'done' : currentAnalysis ? 'active' : 'pending');
     }
 
     // 텍스트 추출
