@@ -17,3 +17,4 @@ test-*.py
 # OS files
 .DS_Store
 Thumbs.db
+test-screenshots/
