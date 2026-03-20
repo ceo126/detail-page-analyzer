@@ -1384,103 +1384,6 @@ app.get('/api/stats', async (req, res) => {
 });
 
 // ============================================================
-// 재분석 API (기존 스크린샷으로 다시 Gemini 분석)
-// ============================================================
-app.post('/api/re-analyze', withTimeout(120000), async (req, res) => {
-  const { sessionId } = req.body;
-  if (!sessionId || !isValidSessionId(sessionId)) return res.status(400).json({ error: '유효하지 않은 sessionId' });
-
-  try {
-    const screenshotDir = path.join(DIRS.screenshots, sessionId);
-    if (!fs.existsSync(screenshotDir)) {
-      return res.status(400).json({ error: '스크린샷을 찾을 수 없습니다. 다시 크롤링해주세요.' });
-    }
-
-    // 기존 히스토리에서 pageData 로드
-    const historyFile = path.join(DIRS.history, `${sessionId}.json`);
-    let pageData = {};
-    if (fs.existsSync(historyFile)) {
-      try {
-        const hist = JSON.parse(fs.readFileSync(historyFile, 'utf-8'));
-        pageData = { productName: hist.productName, url: hist.url, platform: hist.platform };
-      } catch {}
-    }
-
-    // 스크린샷 수집
-    const files = fs.readdirSync(screenshotDir)
-      .filter(f => f.startsWith('screenshot_'))
-      .sort(numericSort)
-      .slice(0, 10);
-
-    const imageDir = path.join(screenshotDir, 'images');
-    let downloadedFiles = [];
-    if (fs.existsSync(imageDir)) {
-      downloadedFiles = fs.readdirSync(imageDir)
-        .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f))
-        .sort(numericSort)
-        .slice(0, 8);
-    }
-
-    const allFiles = [
-      ...files.map(f => path.join(screenshotDir, f)),
-      ...downloadedFiles.map(f => path.join(imageDir, f))
-    ];
-
-    const imageParts = await Promise.all(allFiles.map(async (filePath) => {
-      const resized = await sharp(filePath)
-        .resize(1000, null, { withoutEnlargement: true })
-        .jpeg({ quality: 75 })
-        .toBuffer();
-      return { inlineData: { data: resized.toString('base64'), mimeType: 'image/jpeg' } };
-    }));
-
-    // 분석 프롬프트 (기존과 동일)
-    const prompt = `당신은 10년 경력의 쇼핑몰 상세페이지 마케팅 분석 전문가입니다.
-아래 이미지들은 하나의 상품 상세페이지입니다.
-이미지 속에 보이는 모든 텍스트, 숫자, 문구를 빠짐없이 읽고 분석하세요.
-${pageData.productName ? `제품명: ${pageData.productName}` : ''}
-
-## 분석 지침
-1. 이미지에 보이는 모든 텍스트를 정확히 읽어서 각 항목에 반영
-2. 가격은 할인가/원가 모두 이미지에서 직접 읽기
-3. 셀링포인트는 이미지에서 강조된 문구를 그대로 인용
-4. 각 섹션의 실제 내용을 구체적으로 적기
-5. 최소 5개 이상의 섹션 분석
-
-반드시 아래 JSON 형식으로만 응답 (설명 없이 JSON만):
-{"product":{"name":"","price":"","originalPrice":"","discountRate":"","category":"","brand":"","options":""},"design":{"tone":"","mainColors":[""],"backgroundColor":"","fontStyle":"","imageStyle":"","overallQuality":""},"structure":[{"section":"","description":"","layout":"","visualElements":""}],"copywriting":{"headlineStyle":"","headlines":[""],"toneOfVoice":"","keyPhrases":[""],"sellingPoints":[""],"callToAction":""},"target":{"audience":"","ageRange":"","painPoints":[""],"benefits":[""],"useCases":[""]},"socialProof":{"reviews":"","salesCount":"","certifications":"","trustElements":[""]},"overall":{"strengths":[""],"weaknesses":[""],"score":0,"summary":"","improvementSuggestions":[""]}}`;
-
-    const text = await callGemini(prompt, imageParts);
-
-    let analysis;
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const cleaned = jsonMatch[0].replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
-      try { analysis = JSON.parse(cleaned); } catch {
-        try {
-          const doubleCleaned = cleaned.replace(/"(?:[^"\\]|\\.)*"/g, match => match.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t'));
-          analysis = JSON.parse(doubleCleaned);
-        } catch { analysis = { raw: text }; }
-      }
-    } else { analysis = { raw: text }; }
-
-    // 히스토리 업데이트
-    fs.writeFileSync(historyFile, JSON.stringify({
-      sessionId, url: pageData.url || '', platform: pageData.platform || '',
-      productName: analysis.product?.name || pageData.productName || '',
-      analysis, createdAt: new Date().toISOString()
-    }, null, 2));
-
-    res.json({ success: true, analysis });
-  } catch (err) {
-    console.error('재분석 오류:', err);
-    res.status(500).json({ error: '재분석 중 오류가 발생했습니다.' });
-  }
-});
-
-
-
-// ============================================================
 // 일괄 내보내기 (JPG + PDF 동시 생성)
 // ============================================================
 app.post('/api/export-all', withTimeout(180000), async (req, res) => {
@@ -1556,57 +1459,6 @@ app.post('/api/export-all', withTimeout(180000), async (req, res) => {
   }
 });
 
-
-// ============================================================
-// 서버 통계 조회
-// ============================================================
-app.get('/api/stats', async (req, res) => {
-  try {
-    // 디렉토리 크기 계산 (비동기 재귀)
-    async function getDirSize(dirPath) {
-      let totalSize = 0;
-      try {
-        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-        for (const entry of entries) {
-          const fullPath = path.join(dirPath, entry.name);
-          if (entry.isDirectory()) {
-            totalSize += await getDirSize(fullPath);
-          } else {
-            const stat = await fs.promises.stat(fullPath).catch(() => null);
-            if (stat) totalSize += stat.size;
-          }
-        }
-      } catch {}
-      return totalSize;
-    }
-
-    // 히스토리 수 + 디스크 사용량 병렬 조회
-    const [historyFiles, screenshotsSize, outputSize] = await Promise.all([
-      fs.promises.readdir(DIRS.history).then(f => f.filter(n => n.endsWith('.json'))).catch(() => []),
-      getDirSize(DIRS.screenshots),
-      getDirSize(DIRS.output)
-    ]);
-
-    const memUsage = process.memoryUsage();
-    res.json({
-      success: true,
-      historyCount: historyFiles.length,
-      screenshotsDiskUsage: (screenshotsSize / 1024 / 1024).toFixed(2) + 'MB',
-      outputDiskUsage: (outputSize / 1024 / 1024).toFixed(2) + 'MB',
-      uptime: Math.round(process.uptime()),
-      memory: {
-        heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024) + 'MB',
-        heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + 'MB',
-        rss: Math.round(memUsage.rss / 1024 / 1024) + 'MB'
-      }
-    });
-  } catch (err) {
-    console.error('통계 조회 오류:', err);
-    res.status(500).json({ error: '통계 조회 중 오류가 발생했습니다.' });
-  }
-});
-
-
 // ============================================================
 // 기존 스크린샷으로 재분석 (크롤링 없이 Gemini 재호출)
 // ============================================================
@@ -1670,7 +1522,7 @@ app.post('/api/re-analyze', withTimeout(120000), async (req, res) => {
     // 분석 프롬프트 (기존 /api/analyze와 동일한 형식)
     const prompt = `당신은 10년 경력의 쇼핑몰 상세페이지 마케팅 분석 전문가입니다.
 아래 이미지들은 하나의 상품 상세페이지입니다.
-- 앞 ${files.length}장: 페이지를 위에서부터 순서대로 캔처한 스크린샷
+- 앞 ${files.length}장: 페이지를 위에서부터 순서대로 캡처한 스크린샷
 ${downloadedFiles.length > 0 ? `- 뒤 ${downloadedFiles.length}장: 페이지에서 추출한 원본 상세 이미지` : ''}
 이미지 속에 보이는 모든 텍스트, 숫자, 문구를 빠짐없이 읽고 분석하세요.
 
