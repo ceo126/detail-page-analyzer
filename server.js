@@ -197,6 +197,8 @@ async function crawlPage(url, onProgress, abortSignal) {
     }
   };
 
+  const crawlStartTime = Date.now();
+
   try {
     notify('connecting', '브라우저 시작 중...', 5);
     checkAbort();
@@ -661,7 +663,8 @@ async function crawlPage(url, onProgress, abortSignal) {
       pageData,
       screenshotCount: numChunks,
       totalHeight,
-      downloadedImages
+      downloadedImages,
+      crawlDuration: parseFloat(((Date.now() - crawlStartTime) / 1000).toFixed(1))
     };
   } catch (err) {
     console.error('크롤링 오류:', err);
@@ -1270,6 +1273,417 @@ app.get('/api/screenshots/:sessionId/count', (req, res) => {
   const count = fs.readdirSync(dir).filter(f => f.startsWith('screenshot_')).length;
   res.json({ count });
 });
+
+// ============================================================
+// 통계 API
+// ============================================================
+app.get('/api/stats', async (req, res) => {
+  try {
+    // 히스토리 개수
+    const historyFiles = fs.readdirSync(DIRS.history).filter(f => f.endsWith('.json'));
+
+    // 디렉토리 크기 계산 (비동기)
+    async function getDirSize(dir) {
+      try {
+        const files = await fs.promises.readdir(dir, { withFileTypes: true });
+        let size = 0;
+        for (const f of files) {
+          const fp = path.join(dir, f.name);
+          if (f.isFile()) {
+            const stat = await fs.promises.stat(fp);
+            size += stat.size;
+          } else if (f.isDirectory()) {
+            size += await getDirSize(fp);
+          }
+        }
+        return size;
+      } catch { return 0; }
+    }
+
+    const [screenshotSize, outputSize, uploadSize] = await Promise.all([
+      getDirSize(DIRS.screenshots),
+      getDirSize(DIRS.output),
+      getDirSize(DIRS.uploads)
+    ]);
+
+    res.json({
+      success: true,
+      historyCount: historyFiles.length,
+      screenshotDiskMB: (screenshotSize / 1024 / 1024).toFixed(1),
+      outputDiskMB: (outputSize / 1024 / 1024).toFixed(1),
+      uploadDiskMB: (uploadSize / 1024 / 1024).toFixed(1),
+      totalDiskMB: ((screenshotSize + outputSize + uploadSize) / 1024 / 1024).toFixed(1),
+      uptime: Math.floor(process.uptime()),
+      memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024)
+    });
+  } catch (err) {
+    res.status(500).json({ error: '통계 조회 실패' });
+  }
+});
+
+// ============================================================
+// 재분석 API (기존 스크린샷으로 다시 Gemini 분석)
+// ============================================================
+app.post('/api/re-analyze', withTimeout(120000), async (req, res) => {
+  const { sessionId } = req.body;
+  if (!sessionId || !isValidSessionId(sessionId)) return res.status(400).json({ error: '유효하지 않은 sessionId' });
+
+  try {
+    const screenshotDir = path.join(DIRS.screenshots, sessionId);
+    if (!fs.existsSync(screenshotDir)) {
+      return res.status(400).json({ error: '스크린샷을 찾을 수 없습니다. 다시 크롤링해주세요.' });
+    }
+
+    // 기존 히스토리에서 pageData 로드
+    const historyFile = path.join(DIRS.history, `${sessionId}.json`);
+    let pageData = {};
+    if (fs.existsSync(historyFile)) {
+      try {
+        const hist = JSON.parse(fs.readFileSync(historyFile, 'utf-8'));
+        pageData = { productName: hist.productName, url: hist.url, platform: hist.platform };
+      } catch {}
+    }
+
+    // 스크린샷 수집
+    const files = fs.readdirSync(screenshotDir)
+      .filter(f => f.startsWith('screenshot_'))
+      .sort(numericSort)
+      .slice(0, 10);
+
+    const imageDir = path.join(screenshotDir, 'images');
+    let downloadedFiles = [];
+    if (fs.existsSync(imageDir)) {
+      downloadedFiles = fs.readdirSync(imageDir)
+        .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f))
+        .sort(numericSort)
+        .slice(0, 8);
+    }
+
+    const allFiles = [
+      ...files.map(f => path.join(screenshotDir, f)),
+      ...downloadedFiles.map(f => path.join(imageDir, f))
+    ];
+
+    const imageParts = await Promise.all(allFiles.map(async (filePath) => {
+      const resized = await sharp(filePath)
+        .resize(1000, null, { withoutEnlargement: true })
+        .jpeg({ quality: 75 })
+        .toBuffer();
+      return { inlineData: { data: resized.toString('base64'), mimeType: 'image/jpeg' } };
+    }));
+
+    // 분석 프롬프트 (기존과 동일)
+    const prompt = `당신은 10년 경력의 쇼핑몰 상세페이지 마케팅 분석 전문가입니다.
+아래 이미지들은 하나의 상품 상세페이지입니다.
+이미지 속에 보이는 모든 텍스트, 숫자, 문구를 빠짐없이 읽고 분석하세요.
+${pageData.productName ? `제품명: ${pageData.productName}` : ''}
+
+## 분석 지침
+1. 이미지에 보이는 모든 텍스트를 정확히 읽어서 각 항목에 반영
+2. 가격은 할인가/원가 모두 이미지에서 직접 읽기
+3. 셀링포인트는 이미지에서 강조된 문구를 그대로 인용
+4. 각 섹션의 실제 내용을 구체적으로 적기
+5. 최소 5개 이상의 섹션 분석
+
+반드시 아래 JSON 형식으로만 응답 (설명 없이 JSON만):
+{"product":{"name":"","price":"","originalPrice":"","discountRate":"","category":"","brand":"","options":""},"design":{"tone":"","mainColors":[""],"backgroundColor":"","fontStyle":"","imageStyle":"","overallQuality":""},"structure":[{"section":"","description":"","layout":"","visualElements":""}],"copywriting":{"headlineStyle":"","headlines":[""],"toneOfVoice":"","keyPhrases":[""],"sellingPoints":[""],"callToAction":""},"target":{"audience":"","ageRange":"","painPoints":[""],"benefits":[""],"useCases":[""]},"socialProof":{"reviews":"","salesCount":"","certifications":"","trustElements":[""]},"overall":{"strengths":[""],"weaknesses":[""],"score":0,"summary":"","improvementSuggestions":[""]}}`;
+
+    const text = await callGemini(prompt, imageParts);
+
+    let analysis;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const cleaned = jsonMatch[0].replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
+      try { analysis = JSON.parse(cleaned); } catch {
+        try {
+          const doubleCleaned = cleaned.replace(/"(?:[^"\\]|\\.)*"/g, match => match.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t'));
+          analysis = JSON.parse(doubleCleaned);
+        } catch { analysis = { raw: text }; }
+      }
+    } else { analysis = { raw: text }; }
+
+    // 히스토리 업데이트
+    fs.writeFileSync(historyFile, JSON.stringify({
+      sessionId, url: pageData.url || '', platform: pageData.platform || '',
+      productName: analysis.product?.name || pageData.productName || '',
+      analysis, createdAt: new Date().toISOString()
+    }, null, 2));
+
+    res.json({ success: true, analysis });
+  } catch (err) {
+    console.error('재분석 오류:', err);
+    res.status(500).json({ error: '재분석 중 오류가 발생했습니다.' });
+  }
+});
+
+
+
+// ============================================================
+// 일괄 내보내기 (JPG + PDF 동시 생성)
+// ============================================================
+app.post('/api/export-all', withTimeout(180000), async (req, res) => {
+  const { html, outputId } = req.body;
+  if (!html) return res.status(400).json({ error: 'HTML이 필요합니다' });
+  if (html.length > 2 * 1024 * 1024) return res.status(400).json({ error: 'HTML이 너무 큽니다 (최대 2MB)' });
+  if (outputId && !/^[\w\-]+$/.test(outputId)) return res.status(400).json({ error: '유효하지 않은 outputId' });
+
+  let context = null;
+  try {
+    const b = await getBrowser();
+    context = await b.newContext({ viewport: { width: 860, height: 900 } });
+    const page = await context.newPage();
+
+    // 페이지 로딩 (하나의 브라우저 컨텍스트로 공유)
+    await Promise.race([
+      page.setContent(html, { waitUntil: 'networkidle' }),
+      new Promise(r => setTimeout(r, 15000))
+    ]);
+    await page.waitForTimeout(1000);
+
+    const totalHeight = await page.evaluate(() => document.body.scrollHeight);
+    const id = outputId || Date.now().toString();
+
+    // JPG + PDF 동시 생성 (같은 페이지 재사용)
+    const pngBuffer = await page.screenshot({ fullPage: true, type: 'png' });
+    const pdfFileName = `detail_${id}.pdf`;
+    const pdfPath = path.join(DIRS.output, pdfFileName);
+
+    const [jpgResult, pdfResult] = await Promise.all([
+      // JPG 변환
+      (async () => {
+        const jpgFileName = `detail_${id}.jpg`;
+        const jpgPath = path.join(DIRS.output, jpgFileName);
+        await sharp(pngBuffer)
+          .jpeg({ quality: 90, mozjpeg: true })
+          .toFile(jpgPath);
+        const stats = fs.statSync(jpgPath);
+        return {
+          fileName: jpgFileName,
+          filePath: `/output/${jpgFileName}`,
+          fileSize: (stats.size / 1024 / 1024).toFixed(2) + 'MB',
+          dimensions: `860 x ${totalHeight}px`
+        };
+      })(),
+      // PDF 변환
+      (async () => {
+        await page.pdf({
+          path: pdfPath,
+          width: '860px',
+          height: (totalHeight + 40) + 'px',
+          printBackground: true,
+          margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' }
+        });
+        const stats = fs.statSync(pdfPath);
+        return {
+          fileName: pdfFileName,
+          filePath: `/output/${pdfFileName}`,
+          fileSize: (stats.size / 1024 / 1024).toFixed(2) + 'MB'
+        };
+      })()
+    ]);
+
+    await context.close();
+    context = null;
+
+    res.json({ success: true, jpg: jpgResult, pdf: pdfResult });
+  } catch (err) {
+    console.error('일괄 내보내기 오류:', err);
+    res.status(500).json({ error: '일괄 내보내기 중 오류가 발생했습니다.' });
+  } finally {
+    if (context) await context.close().catch(() => {});
+  }
+});
+
+
+// ============================================================
+// 서버 통계 조회
+// ============================================================
+app.get('/api/stats', async (req, res) => {
+  try {
+    // 디렉토리 크기 계산 (비동기 재귀)
+    async function getDirSize(dirPath) {
+      let totalSize = 0;
+      try {
+        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name);
+          if (entry.isDirectory()) {
+            totalSize += await getDirSize(fullPath);
+          } else {
+            const stat = await fs.promises.stat(fullPath).catch(() => null);
+            if (stat) totalSize += stat.size;
+          }
+        }
+      } catch {}
+      return totalSize;
+    }
+
+    // 히스토리 수 + 디스크 사용량 병렬 조회
+    const [historyFiles, screenshotsSize, outputSize] = await Promise.all([
+      fs.promises.readdir(DIRS.history).then(f => f.filter(n => n.endsWith('.json'))).catch(() => []),
+      getDirSize(DIRS.screenshots),
+      getDirSize(DIRS.output)
+    ]);
+
+    const memUsage = process.memoryUsage();
+    res.json({
+      success: true,
+      historyCount: historyFiles.length,
+      screenshotsDiskUsage: (screenshotsSize / 1024 / 1024).toFixed(2) + 'MB',
+      outputDiskUsage: (outputSize / 1024 / 1024).toFixed(2) + 'MB',
+      uptime: Math.round(process.uptime()),
+      memory: {
+        heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024) + 'MB',
+        heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + 'MB',
+        rss: Math.round(memUsage.rss / 1024 / 1024) + 'MB'
+      }
+    });
+  } catch (err) {
+    console.error('통계 조회 오류:', err);
+    res.status(500).json({ error: '통계 조회 중 오류가 발생했습니다.' });
+  }
+});
+
+
+// ============================================================
+// 기존 스크린샷으로 재분석 (크롤링 없이 Gemini 재호출)
+// ============================================================
+app.post('/api/re-analyze', withTimeout(120000), async (req, res) => {
+  const { sessionId } = req.body;
+  if (!sessionId || !isValidSessionId(sessionId)) return res.status(400).json({ error: '유효하지 않은 sessionId' });
+
+  try {
+    const screenshotDir = path.join(DIRS.screenshots, sessionId);
+    if (!fs.existsSync(screenshotDir)) {
+      return res.status(400).json({ error: '스크린샷을 찾을 수 없습니다. 먼저 크롤링을 실행해주세요.' });
+    }
+
+    // 스크린샷 파일 확인
+    const files = fs.readdirSync(screenshotDir)
+      .filter(f => f.startsWith('screenshot_'))
+      .sort(numericSort)
+      .slice(0, 10);
+
+    if (files.length === 0) {
+      return res.status(400).json({ error: '스크린샷 파일이 없습니다. 다시 크롤링해주세요.' });
+    }
+
+    // 다운로드된 이미지도 포함
+    const imageDir = path.join(screenshotDir, 'images');
+    let downloadedFiles = [];
+    if (fs.existsSync(imageDir)) {
+      downloadedFiles = fs.readdirSync(imageDir)
+        .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f))
+        .sort(numericSort)
+        .slice(0, 8);
+    }
+
+    // 기존 히스토리에서 pageData 복원
+    let pageData = {};
+    const historyFile = path.join(DIRS.history, `${sessionId}.json`);
+    if (fs.existsSync(historyFile)) {
+      try {
+        const histData = JSON.parse(fs.readFileSync(historyFile, 'utf-8'));
+        pageData = {
+          productName: histData.productName || '',
+          platform: histData.platform || '',
+          url: histData.url || ''
+        };
+      } catch {}
+    }
+
+    // 이미지를 base64로 변환 (병렬 처리)
+    const allFiles = [
+      ...files.map(f => path.join(screenshotDir, f)),
+      ...downloadedFiles.map(f => path.join(imageDir, f))
+    ];
+    const imageParts = await Promise.all(allFiles.map(async (filePath) => {
+      const resized = await sharp(filePath)
+        .resize(1000, null, { withoutEnlargement: true })
+        .jpeg({ quality: 75 })
+        .toBuffer();
+      return { inlineData: { data: resized.toString('base64'), mimeType: 'image/jpeg' } };
+    }));
+
+    // 분석 프롬프트 (기존 /api/analyze와 동일한 형식)
+    const prompt = `당신은 10년 경력의 쇼핑몰 상세페이지 마케팅 분석 전문가입니다.
+아래 이미지들은 하나의 상품 상세페이지입니다.
+- 앞 ${files.length}장: 페이지를 위에서부터 순서대로 캔처한 스크린샷
+${downloadedFiles.length > 0 ? `- 뒤 ${downloadedFiles.length}장: 페이지에서 추출한 원본 상세 이미지` : ''}
+이미지 속에 보이는 모든 텍스트, 숫자, 문구를 빠짐없이 읽고 분석하세요.
+
+${pageData.productName ? `추가 정보:
+- 제품명: ${pageData.productName}` : ''}
+
+## 분석 지침
+1. 이미지에 보이는 **모든 텍스트를 정확히 읽어서** 각 항목에 반영하세요
+2. 가격은 할인가/원가 모두 이미지에서 직접 읽어주세요
+3. 셀링포인트는 이미지에서 강조된 문구를 **그대로 인용**하세요
+4. 각 섹션의 실제 내용(헤드라인, 본문 텍스트)를 **구체적으로** 적어주세요
+5. structure의 각 섹션마다 실제 텍스트 내용을 description에 포함하세요
+6. 최소 5개 이상의 섹션을 분석하세요
+
+**반드시 아래 JSON 형식으로만** 응답하세요 (설명 텍스트 없이 JSON만):
+
+{
+  "product": { "name": "", "price": "", "originalPrice": null, "discountRate": null, "category": "", "brand": "", "options": "" },
+  "design": { "tone": "", "mainColors": [], "backgroundColor": "", "fontStyle": "", "imageStyle": "", "overallQuality": "" },
+  "structure": [{ "section": "", "description": "", "layout": "", "visualElements": "" }],
+  "copywriting": { "headlineStyle": "", "headlines": [], "toneOfVoice": "", "keyPhrases": [], "sellingPoints": [], "callToAction": "" },
+  "target": { "audience": "", "ageRange": "", "painPoints": [], "benefits": [], "useCases": [] },
+  "socialProof": { "reviews": "", "salesCount": "", "certifications": "", "trustElements": [] },
+  "overall": { "strengths": [], "weaknesses": [], "score": 0, "summary": "", "improvementSuggestions": [] }
+}`;
+
+    const text = await callGemini(prompt, imageParts);
+
+    // JSON 추출
+    let analysis;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      // 제어 문자 제거 (Gemini가 \b, \f 등을 포함할 수 있음)
+      const cleaned = jsonMatch[0].replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
+      try {
+        analysis = JSON.parse(cleaned);
+      } catch (parseErr) {
+        // 한번 더 시도: JSON 문자열 값 내부의 실제 줄바꿈만 이스케이프
+        try {
+          const doubleCleaned = cleaned.replace(
+            /"(?:[^"\\]|\\.)*"/g,
+            match => match.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')
+          );
+          analysis = JSON.parse(doubleCleaned);
+        } catch {
+          console.error('JSON 파싱 실패:', parseErr.message, '(첫 200자:', cleaned.substring(0, 200), ')');
+          analysis = { raw: text };
+        }
+      }
+    } else {
+      analysis = { raw: text };
+    }
+
+    // 히스토리 업데이트
+    const updatedHistory = {
+      sessionId,
+      url: pageData.url || '',
+      platform: pageData.platform || '',
+      productName: analysis.product?.name || pageData.productName || '',
+      analysis,
+      createdAt: new Date().toISOString(),
+      reAnalyzed: true
+    };
+    fs.writeFileSync(
+      path.join(DIRS.history, `${sessionId}.json`),
+      JSON.stringify(updatedHistory, null, 2)
+    );
+
+    res.json({ success: true, analysis });
+  } catch (err) {
+    console.error('재분석 오류:', err);
+    res.status(500).json({ error: '재분석 중 오류가 발생했습니다. 다시 시도해주세요.' });
+  }
+});
+
 
 // ============================================================
 // 헬스체크

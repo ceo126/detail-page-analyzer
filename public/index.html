@@ -1636,6 +1636,12 @@
         document.getElementById('lightbox').classList.remove('show');
         return;
       }
+      // 라이트박스 키보드 네비게이션
+      if (document.getElementById('lightbox').classList.contains('show')) {
+        if (e.key === 'ArrowLeft') navigateLightbox(-1);
+        if (e.key === 'ArrowRight') navigateLightbox(1);
+        return;
+      }
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if (e.ctrlKey && e.key === 'Enter') {
         e.preventDefault();

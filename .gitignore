@@ -4,5 +4,16 @@ output/
 screenshots/
 uploads/
 history/
-test-*.js
 .browser-data/
+
+# Logs
+server.log
+*.log
+
+# Test files
+test-*.js
+test-*.py
+
+# OS files
+.DS_Store
+Thumbs.db
