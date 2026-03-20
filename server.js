@@ -14,21 +14,52 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 app.use(express.json({ limit: '5mb' }));
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = process.env.CORS_ORIGIN || '*';
+  res.header('Access-Control-Allow-Origin', origin);
   res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
 
-// API 요청 로깅
+// 간단한 레이트 리미터 (IP당 분당 요청 수 제한)
+const rateLimits = new Map();
+function rateLimit(maxPerMinute) {
+  return (req, res, next) => {
+    const ip = req.ip || req.connection.remoteAddress;
+    const now = Date.now();
+    const windowMs = 60000;
+    if (!rateLimits.has(ip)) rateLimits.set(ip, []);
+    const requests = rateLimits.get(ip).filter(t => now - t < windowMs);
+    if (requests.length >= maxPerMinute) {
+      return res.status(429).json({ error: '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.' });
+    }
+    requests.push(now);
+    rateLimits.set(ip, requests);
+    next();
+  };
+}
+// 5분마다 만료된 레이트 리밋 데이터 정리
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, times] of rateLimits) {
+    const valid = times.filter(t => now - t < 60000);
+    if (valid.length === 0) rateLimits.delete(ip);
+    else rateLimits.set(ip, valid);
+  }
+}, 300000);
+
+// API 요청 로깅 (요청 ID 포함)
 app.use('/api', (req, res, next) => {
   const start = Date.now();
+  const reqId = Math.random().toString(36).slice(2, 8);
+  req.reqId = reqId;
   const { method, originalUrl } = req;
   res.on('finish', () => {
     const ms = Date.now() - start;
     if (originalUrl !== '/api/health') {
-      console.log(`[${new Date().toLocaleTimeString('ko-KR')}] ${method} ${originalUrl} → ${res.statusCode} (${ms}ms)`);
+      console.log(`[${new Date().toLocaleTimeString('ko-KR')}] [${reqId}] ${method} ${originalUrl} → ${res.statusCode} (${ms}ms)`);
     }
   });
   next();
@@ -70,11 +101,16 @@ let browserLaunching = null;
 
 async function getBrowser() {
   // 브라우저가 죽었으면 참조 정리
-  if (browser && !browser.isConnected()) {
-    console.log('브라우저 연결 끊김 감지, 재시작...');
+  try {
+    if (browser && !browser.isConnected()) {
+      console.log('브라우저 연결 끊김 감지, 재시작...');
+      browser = null;
+    }
+    if (browser && browser.isConnected()) return browser;
+  } catch (e) {
+    console.log('브라우저 상태 확인 실패, 재시작...', e.message);
     browser = null;
   }
-  if (browser && browser.isConnected()) return browser;
   if (browserLaunching) return browserLaunching;
   browserLaunching = (async () => {
     const args = [
@@ -700,7 +736,7 @@ async function parallelLimit(tasks, limit) {
 // ============================================================
 // 1) URL에서 상세페이지 크롤링 + 스크린샷 (POST)
 // ============================================================
-app.post('/api/crawl', withTimeout(120000), async (req, res) => {
+app.post('/api/crawl', rateLimit(10), withTimeout(120000), async (req, res) => {
   const { url } = req.body;
   const err = validateUrl(url);
   if (err) return res.status(400).json({ error: err });
@@ -715,7 +751,7 @@ app.post('/api/crawl', withTimeout(120000), async (req, res) => {
 // ============================================================
 // 1-b) 크롤링 SSE (실시간 진행률)
 // ============================================================
-app.get('/api/crawl-sse', async (req, res) => {
+app.get('/api/crawl-sse', rateLimit(10), async (req, res) => {
   const url = req.query.url;
   const err = validateUrl(url);
   if (err) {
@@ -749,7 +785,7 @@ app.get('/api/crawl-sse', async (req, res) => {
 // ============================================================
 // 2) Gemini Vision으로 상세페이지 분석
 // ============================================================
-app.post('/api/analyze', withTimeout(120000), async (req, res) => {
+app.post('/api/analyze', rateLimit(20), withTimeout(120000), async (req, res) => {
   const { sessionId, pageData } = req.body;
   if (!sessionId || !isValidSessionId(sessionId)) return res.status(400).json({ error: '유효하지 않은 sessionId' });
 
@@ -909,7 +945,7 @@ ${pageData ? `\n추가 추출 텍스트:\n- 제품명: ${pageData.productName ||
 // ============================================================
 // 3) 분석 결과 기반 상세페이지 HTML 생성
 // ============================================================
-app.post('/api/generate', withTimeout(120000), async (req, res) => {
+app.post('/api/generate', rateLimit(20), withTimeout(120000), async (req, res) => {
   const { analysis, userEdits, keyword, sessionId: reqSessionId, useOriginalImages } = req.body;
   if (!analysis) return res.status(400).json({ error: '분석 데이터 필요' });
   if (keyword && keyword.length > 200) return res.status(400).json({ error: '키워드는 200자 이하로 입력하세요' });
@@ -1033,7 +1069,7 @@ ${editInstructions}
 // ============================================================
 // 4) HTML → 긴 JPG 이미지 변환
 // ============================================================
-app.post('/api/export-jpg', withTimeout(180000), async (req, res) => {
+app.post('/api/export-jpg', rateLimit(30), withTimeout(180000), async (req, res) => {
   const { html, outputId } = req.body;
   if (!html) return res.status(400).json({ error: 'HTML 필요' });
   if (html.length > 2 * 1024 * 1024) return res.status(400).json({ error: 'HTML이 너무 큽니다 (최대 2MB)' });
@@ -1087,7 +1123,7 @@ app.post('/api/export-jpg', withTimeout(180000), async (req, res) => {
 // ============================================================
 // 4-b) HTML → PDF 변환
 // ============================================================
-app.post('/api/export-pdf', withTimeout(180000), async (req, res) => {
+app.post('/api/export-pdf', rateLimit(30), withTimeout(180000), async (req, res) => {
   const { html, outputId } = req.body;
   if (!html) return res.status(400).json({ error: 'HTML 필요' });
   if (html.length > 2 * 1024 * 1024) return res.status(400).json({ error: 'HTML이 너무 큽니다 (최대 2MB)' });
@@ -2020,9 +2056,13 @@ async function expandIframeContent(page) {
 
 // 글로벌 에러 핸들러
 app.use((err, req, res, next) => {
-  console.error('서버 오류:', err);
+  // multer 파일 크기 초과 에러 처리
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: '파일이 너무 큽니다 (최대 10MB)' });
+  }
+  console.error(`서버 오류 [${req.reqId || '-'}] ${req.method} ${req.originalUrl}:`, err.message);
   if (!res.headersSent) {
-    res.status(500).json({ error: err.message || '서버 내부 오류가 발생했습니다.' });
+    res.status(err.status || 500).json({ error: err.message || '서버 내부 오류가 발생했습니다.' });
   }
 });
 
