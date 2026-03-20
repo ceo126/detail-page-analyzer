@@ -714,6 +714,25 @@
 
   <div class="toast" id="toast"></div>
 
+  <!-- 온보딩 -->
+  <div id="onboarding" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:300; display:flex; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:16px; padding:32px; max-width:500px; width:90%;">
+      <h2 style="font-size:20px; font-weight:700; margin-bottom:16px; color:#3b82f6;">상세페이지 분석기 사용법</h2>
+      <div style="font-size:14px; color:var(--text-secondary); line-height:1.8;">
+        <p style="margin-bottom:12px;"><b style="color:var(--text-primary);">1단계</b> — URL 입력 후 "이미지 가져오기" 클릭</p>
+        <p style="margin-bottom:12px;"><b style="color:var(--text-primary);">2단계</b> — 캐처된 이미지 확인 후 "AI 분석" 클릭</p>
+        <p style="margin-bottom:12px;"><b style="color:var(--text-primary);">3단계</b> — 분석 결과를 확인하고 "생성" 탭에서 새 상세페이지 생성</p>
+        <p style="margin-bottom:12px;"><b style="color:var(--text-primary);">4단계</b> — 미리보기에서 JPG/PDF/HTML로 내보내기</p>
+      </div>
+      <div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end;">
+        <label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:4px; margin-right:auto;">
+          <input type="checkbox" id="noShowAgain"> 다시 보지 않기
+        </label>
+        <button class="btn btn-purple" onclick="closeOnboarding()" style="padding:8px 20px;">시작하기</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let currentSessionId = null;
     let currentAnalysis = null;
@@ -761,6 +780,7 @@
       }
       const btnCrawl = document.getElementById('btnCrawl');
       btnCrawl.disabled = false;
+      document.getElementById('urlInput').disabled = false;
       btnCrawl.textContent = '이미지 가져오기';
       setProgress(false);
       document.getElementById('progressText').textContent = '';
@@ -784,6 +804,7 @@
       const btnCrawl = document.getElementById('btnCrawl');
       const btnAnalyze = document.getElementById('btnAnalyze');
       btnCrawl.disabled = true;
+      document.getElementById('urlInput').disabled = true;
       btnCrawl.innerHTML = '<span class="spinner"></span>연결 중...';
       btnAnalyze.style.display = 'none';
 
@@ -822,6 +843,7 @@
           setProgress(false);
           btnCrawl.disabled = false;
           btnCrawl.textContent = '이미지 가져오기';
+          document.getElementById('urlInput').disabled = false;
         }
       };
 
@@ -851,6 +873,7 @@
       } finally {
         btnCrawl.disabled = false;
         btnCrawl.textContent = '이미지 가져오기';
+        document.getElementById('urlInput').disabled = false;
       }
     }
 
@@ -880,11 +903,13 @@
       notifyIfHidden('크롤링 완료', '스크린샷 ' + crawl.screenshotCount + '장 캡처');
       btnAnalyze.style.display = 'inline-flex';
       btnCrawl.disabled = false;
+      document.getElementById('urlInput').disabled = false;
       btnCrawl.textContent = '이미지 가져오기';
       document.getElementById('btnRecrawl').style.display = 'inline-block';
       document.getElementById('viewToggle').style.display = 'inline-flex';
       document.getElementById('btnCompare').style.display = 'inline-block';
       switchTab('analysis');
+      setTimeout(() => document.getElementById('btnAnalyze').focus(), 300);
       saveSession();
     }
 
@@ -1456,7 +1481,8 @@
         return `${days}일 전`;
       }
 
-      list.innerHTML = `<div class="history-search"><input type="text" placeholder="검색 (제품명, URL, 플랫폼)" value="${esc(query)}" oninput="renderHistoryList(this.value)"></div>`
+      list.innerHTML = `<div class="history-search" style="display:flex;gap:4px;align-items:center;"><input type="text" placeholder="검색 (제품명, URL, 플랫폼)" value="${esc(query)}" oninput="renderHistoryList(this.value)" style="flex:1;">
+        ${historyCache.length > 0 ? '<button onclick="deleteAllHistory()" style="background:none;border:1px solid #ef4444;color:#ef4444;padding:2px 6px;border-radius:4px;font-size:10px;cursor:pointer;white-space:nowrap;">전체 삭제</button>' : ''}</div>`
         + (!filtered.length ? '<div style="padding:14px;color:#555;text-align:center;">없음</div>'
         : filtered.map(h => `<div class="history-item" style="display:flex; align-items:start; gap:8px;">
             <div style="flex:1; cursor:pointer;" onclick="loadHistory('${esc(h.sessionId)}')">
@@ -1507,6 +1533,15 @@
       }
 
       renderAnalysis(data.analysis); switchTab('analysis'); showToast('불러옴', 'success');
+    }
+    async function deleteAllHistory() {
+      if (!confirm(`히스토리 ${historyCache.length}건을 모두 삭제하시겠습니까?`)) return;
+      try {
+        await Promise.all(historyCache.map(h => fetch(`/api/history/${h.sessionId}`, { method: 'DELETE' })));
+        historyCache = [];
+        renderHistoryList('');
+        showToast('전체 삭제 완료', 'success');
+      } catch { showToast('삭제 실패', 'error'); }
     }
     async function deleteHistory(sid) {
       if (!confirm('이 히스토리를 삭제하시겠습니까?')) return;
@@ -1605,6 +1640,27 @@
       // 생성 탭: 분석 미완료 시 안내
       const notice = document.getElementById('genNotice');
       if (notice) notice.style.display = (name === 'generate' && !currentAnalysis) ? 'block' : 'none';
+      // 탭 뽃지 업데이트
+      updateTabBadges();
+    }
+    function updateTabBadges() {
+      const tabs = document.querySelectorAll('.tab');
+      tabs.forEach(tab => {
+        const existing = tab.querySelector('.tab-badge');
+        if (existing) existing.remove();
+      });
+      // 분석 탭: 분석 완료 시 점수 표시
+      if (currentAnalysis?.overall?.score) {
+        const score = currentAnalysis.overall.score;
+        const color = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
+        const analysisTab = document.querySelector('[data-tab="analysis"]');
+        analysisTab.innerHTML = `분석 결과 <span class="tab-badge" style="background:${color}; color:#fff; font-size:10px; padding:1px 5px; border-radius:8px; margin-left:4px;">${score}</span>`;
+      }
+      // 생성 탭: 생성 횟수
+      if (generationHistory.length > 0) {
+        const genTab = document.querySelector('[data-tab="generate"]');
+        genTab.innerHTML = `생성 <span class="tab-badge" style="background:#8b5cf6; color:#fff; font-size:10px; padding:1px 5px; border-radius:8px; margin-left:4px;">${generationHistory.length}</span>`;
+      }
     }
 
     const originalTitle = document.title;
@@ -1969,6 +2025,17 @@
       document.getElementById('keywordInput').value = '';
       document.getElementById('editInstructions').value = '';
       showToast('초기화됨', 'success');
+    }
+
+    // 온보딩
+    function closeOnboarding() {
+      document.getElementById('onboarding').style.display = 'none';
+      if (document.getElementById('noShowAgain').checked) {
+        localStorage.setItem('hideOnboarding', 'true');
+      }
+    }
+    if (!localStorage.getItem('hideOnboarding') && !localStorage.getItem('lastSession')) {
+      document.getElementById('onboarding').style.display = 'flex';
     }
   </script>
 </body>
