@@ -104,18 +104,6 @@ async function getBrowser() {
   return browserLaunching;
 }
 
-async function createStealthContext(b, opts = {}) {
-  const context = await b.newContext({
-    viewport: { width: 1400, height: 900 },
-    locale: 'ko-KR',
-    timezoneId: 'Asia/Seoul',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-    ...opts,
-  });
-  await context.addInitScript(STEALTH_SCRIPTS.join('\n'));
-  return context;
-}
-
 // 자동화 흔적 제거 스크립트
 const STEALTH_SCRIPTS = [
   // navigator.webdriver 숨기기
@@ -138,6 +126,18 @@ const STEALTH_SCRIPTS = [
   // languages 위장
   `Object.defineProperty(navigator, 'languages', { get: () => ['ko-KR', 'ko', 'en-US', 'en'] });`,
 ];
+
+async function createStealthContext(b, opts = {}) {
+  const context = await b.newContext({
+    viewport: { width: 1400, height: 900 },
+    locale: 'ko-KR',
+    timezoneId: 'Asia/Seoul',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+    ...opts,
+  });
+  await context.addInitScript(STEALTH_SCRIPTS.join('\n'));
+  return context;
+}
 
 // Gemini API 호출 (자동 재시도 + 타임아웃)
 async function callGemini(prompt, imageParts = [], maxRetries = 2) {
@@ -337,7 +337,8 @@ async function crawlPage(url, onProgress, abortSignal) {
     // 1단계: 전체 스크롤하여 lazy-load 콘텐츠 모두 로딩
     notify('scrolling', '전체 스크롤 중 (lazy-load)...', 45);
     checkAbort();
-    await autoScroll(page);
+    await autoScroll(page, 50000, abortSignal);
+    checkAbort();
     await page.waitForTimeout(2000);
 
     // ============================================================
@@ -1394,7 +1395,10 @@ async function dismissPopups(page) {
   }
 }
 
-async function autoScroll(page, maxPx = 50000) {
+async function autoScroll(page, maxPx = 50000, abortSignal) {
+  if (abortSignal && abortSignal.aborted) {
+    throw new Error('클라이언트 연결이 끊겨 크롤링이 취소되었습니다.');
+  }
   await page.evaluate(async (limit) => {
     await new Promise((resolve) => {
       let totalHeight = 0;

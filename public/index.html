@@ -1434,10 +1434,14 @@
     function applyHtmlEdit() { currentHtml = document.getElementById('htmlEditor').value; updatePreview(currentHtml); closeHtmlEditor(); showToast('적용됨', 'success'); }
 
     async function exportAnalysisJson() {
-      if (!currentAnalysis) return;
-      const res = await fetch('/api/export-analysis', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: currentAnalysis, sessionId: currentSessionId }) });
-      const data = await res.json();
-      if (data.success) { const a = document.createElement('a'); a.href = data.filePath; a.download = data.fileName; a.click(); showToast('JSON 저장됨', 'success'); }
+      if (!currentAnalysis) return showToast('분석 데이터 없음', 'error');
+      try {
+        const res = await fetch('/api/export-analysis', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: currentAnalysis, sessionId: currentSessionId }) });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'JSON 저장 실패');
+        const a = document.createElement('a'); a.href = data.filePath; a.download = data.fileName; a.click();
+        showToast('JSON 저장됨', 'success');
+      } catch (err) { showToast(err.message || 'JSON 저장 실패', 'error'); }
     }
 
     function switchTab(name) {
@@ -1469,7 +1473,7 @@
       toastTimer = setTimeout(() => { t.classList.remove('show'); toastTimer = null; }, 3000);
     }
 
-    function esc(s) { if (!s || s === 'null' || s === 'undefined') return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
+    function esc(s) { if (!s || s === 'null' || s === 'undefined') return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML.replace(/'/g, '&#39;'); }
 
     function copyAnalysis() {
       if (!currentAnalysis) return showToast('분석 데이터 없음', 'error');
