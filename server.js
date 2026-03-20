@@ -1200,6 +1200,30 @@ app.post('/api/export-clean-html', (req, res) => {
 });
 
 // ============================================================
+// 4-d) HTML에서 텍스트만 추출 (카피라이팅 검토용)
+// ============================================================
+app.post('/api/extract-text', (req, res) => {
+  const { html } = req.body;
+  if (!html) return res.status(400).json({ error: 'HTML 필요' });
+  if (html.length > 2 * 1024 * 1024) return res.status(400).json({ error: 'HTML이 너무 큽니다' });
+
+  // 태그 제거, 텍스트만 추출
+  let text = html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, '\n')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  res.json({ success: true, text, charCount: text.length });
+});
+
+// ============================================================
 // 5) 이미지 업로드 (플레이스홀더 교체용)
 // ============================================================
 const uploadStorage = multer.diskStorage({
