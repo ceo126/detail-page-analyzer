@@ -177,7 +177,7 @@ async function createStealthContext(b, opts = {}) {
 
 // Gemini API 호출 (자동 재시도 + 타임아웃)
 async function callGemini(prompt, imageParts = [], maxRetries = 2) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.0-flash' });
   const TIMEOUT_MS = 60000; // 60초 타임아웃
   let lastError;
   for (let i = 0; i <= maxRetries; i++) {
@@ -1860,7 +1860,8 @@ app.get('/api/health', (req, res) => {
     activeCrawls,
     geminiConfigured: !!process.env.GEMINI_API_KEY,
     memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
-    nodeVersion: process.version
+    nodeVersion: process.version,
+    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash'
   });
 });
 
