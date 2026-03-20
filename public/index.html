@@ -763,6 +763,7 @@
       btnCrawl.disabled = false;
       btnCrawl.textContent = '이미지 가져오기';
       setProgress(false);
+      document.getElementById('progressText').textContent = '';
       showToast('크롤링 취소됨', 'error');
     }
 
@@ -883,7 +884,6 @@
       document.getElementById('btnRecrawl').style.display = 'inline-block';
       document.getElementById('viewToggle').style.display = 'inline-flex';
       document.getElementById('btnCompare').style.display = 'inline-block';
-      document.getElementById('viewToggle').style.display = 'inline-flex';
       switchTab('analysis');
       saveSession();
     }
@@ -932,7 +932,6 @@
         const analyzeSec = ((Date.now() - analyzeStart) / 1000).toFixed(1);
         showToast(`AI 분석 완료 (${analyzeSec}초)`, 'success');
         notifyIfHidden('AI 분석 완료', analyze.analysis?.product?.name || '분석 결과');
-        notifyIfHidden('AI 분석 완료', analyze.analysis?.product?.name || '분석 결과 확인');
         saveSession();
 
         // 키워드 자동 채움 (분석된 제품명)
@@ -1151,6 +1150,7 @@
 
     async function generatePage() {
       if (!currentAnalysis) return showToast('먼저 분석하세요', 'error');
+      if (!currentSessionId) return showToast('먼저 이미지를 가져오세요', 'error');
       const keyword = document.getElementById('keywordInput').value.trim();
       const useOriginalImages = document.getElementById('useOriginalImages').checked;
       const btn = document.getElementById('btnGenerate');
@@ -1158,8 +1158,9 @@
       btn.innerHTML = '<span class="spinner"></span>생성 중... (10~20초 소요)';
       setProgress(true, 30, '상세페이지 생성 중...');
       const genStart = Date.now();
-      // 이전 JPG 결과 초기화
+      // 이전 결과 초기화
       document.getElementById('jpgResult').style.display = 'none';
+      document.getElementById('pdfResult').style.display = 'none';
       try {
         const res = await fetch('/api/generate', {
           method: 'POST',
@@ -1622,7 +1623,8 @@
       if (toastTimer) clearTimeout(toastTimer);
       t.textContent = msg; t.className = 'toast ' + (type||'');
       requestAnimationFrame(() => t.classList.add('show'));
-      toastTimer = setTimeout(() => { t.classList.remove('show'); toastTimer = null; }, 3000);
+      const duration = type === 'error' ? 5000 : 3000;
+      toastTimer = setTimeout(() => { t.classList.remove('show'); toastTimer = null; }, duration);
     }
 
     function esc(s) { if (!s || s === 'null' || s === 'undefined') return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML.replace(/'/g, '&#39;'); }
@@ -1683,12 +1685,12 @@
     document.getElementById('urlInput').addEventListener('input', (e) => {
       const val = e.target.value.trim();
       const bar = e.target.closest('.url-bar');
-      if (!val) { bar.style.borderColor = '#2d3140'; return; }
+      if (!val) { bar.style.borderColor = ''; return; }
       try {
         const u = new URL(val);
         bar.style.borderColor = ['http:', 'https:'].includes(u.protocol) ? '#10b981' : '#ef4444';
       } catch {
-        bar.style.borderColor = val.length > 5 ? '#ef4444' : '#2d3140';
+        bar.style.borderColor = val.length > 5 ? '#ef4444' : '';
       }
     });
 
@@ -1851,6 +1853,8 @@
     // ============================================================
     async function exportAll() {
       if (!currentHtml) return showToast('먼저 생성하세요', 'error');
+      document.getElementById('jpgResult').style.display = 'none';
+      document.getElementById('pdfResult').style.display = 'none';
       const btn = document.getElementById('btnExportAll');
       btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
       try {
