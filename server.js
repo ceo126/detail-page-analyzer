@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { chromium } = require('playwright');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Anthropic = require('@anthropic-ai/sdk');
 const sharp = require('sharp');
 const multer = require('multer');
 
@@ -10,7 +10,7 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 8150;
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 app.use(express.json({ limit: '5mb' }));
 app.use((req, res, next) => {
@@ -175,25 +175,42 @@ async function createStealthContext(b, opts = {}) {
   return context;
 }
 
-// Gemini API 호출 (자동 재시도 + 타임아웃)
-async function callGemini(prompt, imageParts = [], maxRetries = 2) {
-  const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.0-flash' });
-  const TIMEOUT_MS = 60000; // 60초 타임아웃
+// Claude API 호출 (자동 재시도 + 타임아웃)
+async function callClaude(prompt, imageParts = [], maxRetries = 2) {
+  const modelId = process.env.CLAUDE_MODEL || 'claude-sonnet-4-5-20250514';
+  const TIMEOUT_MS = 120000; // 120초 타임아웃 (이미지 분석은 오래 걸릴 수 있음)
   let lastError;
   for (let i = 0; i <= maxRetries; i++) {
     try {
-      const parts = imageParts.length > 0 ? [prompt, ...imageParts] : [prompt];
+      // 메시지 content 구성: 이미지 + 텍스트
+      const content = [];
+      for (const img of imageParts) {
+        content.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: img.inlineData.mimeType,
+            data: img.inlineData.data,
+          }
+        });
+      }
+      content.push({ type: 'text', text: prompt });
+
       const result = await Promise.race([
-        model.generateContent(parts),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini API 응답 시간 초과 (60초)')), TIMEOUT_MS))
+        anthropic.messages.create({
+          model: modelId,
+          max_tokens: 8192,
+          messages: [{ role: 'user', content }],
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Claude API 응답 시간 초과')), TIMEOUT_MS))
       ]);
-      return result.response.text();
+      // text 블록 추출
+      return result.content.filter(b => b.type === 'text').map(b => b.text).join('');
     } catch (err) {
       lastError = err;
-      console.error(`Gemini API 오류 (시도 ${i + 1}/${maxRetries + 1}):`, err.message);
+      console.error(`Claude API 오류 (시도 ${i + 1}/${maxRetries + 1}):`, err.message);
       if (i < maxRetries) {
-        // 429 (quota exceeded)는 더 길게 대기
-        const baseDelay = err.status === 429 ? 10000 : 2000;
+        const baseDelay = err.status === 429 ? 15000 : 3000;
         await new Promise(r => setTimeout(r, baseDelay * (i + 1)));
       }
     }
@@ -897,7 +914,7 @@ ${pageData ? `\n추가 추출 텍스트:\n- 제품명: ${pageData.productName ||
   }
 }`;
 
-    const text = await callGemini(prompt, imageParts);
+    const text = await callClaude(prompt, imageParts);
 
     // JSON 추출
     let analysis;
@@ -1036,7 +1053,7 @@ ${editInstructions}
 반드시 완전한 HTML 코드만 출력하세요. \`\`\`html 태그로 감싸세요.
 <html>부터 </html>까지 포함.`;
 
-    const text = await callGemini(prompt, imageParts);
+    const text = await callClaude(prompt, imageParts);
 
     // HTML 추출
     let html = '';
@@ -1549,7 +1566,7 @@ ${pageData.productName ? `추가 정보:
   "overall": { "strengths": [], "weaknesses": [], "score": 0, "summary": "", "improvementSuggestions": [] }
 }`;
 
-    const text = await callGemini(prompt, imageParts);
+    const text = await callClaude(prompt, imageParts);
 
     // JSON 추출
     let analysis;
@@ -1710,10 +1727,10 @@ app.get('/api/health', (req, res) => {
     uptime: process.uptime(),
     browserConnected: !!(browser && browser.isConnected()),
     activeCrawls,
-    geminiConfigured: !!process.env.GEMINI_API_KEY,
+    aiConfigured: !!process.env.ANTHROPIC_API_KEY,
     memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
     nodeVersion: process.version,
-    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+    aiModel: process.env.CLAUDE_MODEL || 'claude-sonnet-4-5-20250514'
   });
 });
 
